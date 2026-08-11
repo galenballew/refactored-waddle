@@ -1,0 +1,5 @@
+{
+  "boxes": ["box1", "box2", "box3", "box4", "box5"],
+  "start_url": "about:blank",
+  "window_size": [900, 700]
+}
