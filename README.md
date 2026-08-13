@@ -1,7 +1,5 @@
-<<<<<<< HEAD
-# refactored-waddle
-=======
-# multibox
+
+# Multiboxing for Agents
 
 Runs several real Chromium windows at once and gives you one small always-on-top
 panel to control them. Click a row to jump to that window, or type a URL and send
@@ -92,4 +90,3 @@ Also worth knowing: profiles are temporary and thrown away when the app closes.
 The windows are separate browser launches, which keeps their cookies and storage
 apart in practice, but nothing here is built or tested as a security boundary.
 Do not rely on it as one.
->>>>>>> 3b05859 (Add multibox window manager for browser sandboxes)
