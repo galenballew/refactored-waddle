@@ -44,6 +44,10 @@ class Session:
     turns: List[Turn] = field(default_factory=list)
     steps: List[str] = field(default_factory=list)
     tasks: int = 0  # how many tasks this box has been given, ever
+    # Where the agent last reported the page to be. Playwright's own `page.url`
+    # in this process does not see navigations made by another CDP client -- and
+    # the agent is another CDP client -- so the caption trusts this first.
+    url: Optional[str] = None
 
     # -- what was said ------------------------------------------------------
 

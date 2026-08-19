@@ -163,7 +163,7 @@ class OverviewView:
         x += self.font.measure(label + "  ")
         self.canvas.create_text(
             x, top, anchor="nw",
-            text=clip(self.font, short_url(box.url), tile.label.right - x),
+            text=clip(self.font, short_url(self.app.url_of(box)), tile.label.right - x),
             fill=theme.MUTED, font=self.font,
         )
 

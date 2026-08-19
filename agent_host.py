@@ -1,11 +1,18 @@
-"""One box's agent, in its own process. Still a scripted stand-in, not an agent.
+"""One box's agent, in its own process.
 
-    python agent_host.py <box-name>
+    python agent_host.py <box-name> [--cdp http://127.0.0.1:PORT]
 
-No model call, no browser, no decisions -- it walks a fixed script on a timer,
-one process per box. What is real here is the boundary: the dashboard talks to
-this over stdio and knows nothing else about it, so replacing the script with a
-Claude Agent SDK loop is a change to this file alone.
+Given a CDP endpoint it drives that box's real browser: it opens pages, reads
+them, takes screenshots and clicks links, and everything it reports is something
+that actually happened. Given no endpoint it falls back to a scripted stand-in
+that invents all of it, which is what `smoke.py` runs against so the fast checks
+need no browser.
+
+**There is still no model here.** What to do next is decided by a fixed script,
+not by anything that thinks: find a URL in what the user said, go there, look at
+it, click the first link. That is the whole intelligence. Replacing this file's
+`BrowserAgent` with a Claude Agent SDK loop is the last milestone, and nothing
+outside this file should have to change for it.
 
 The protocol is one JSON object per line.
 
@@ -16,47 +23,45 @@ The protocol is one JSON object per line.
           {"type": "state", "value": "working"}
           {"type": "say",   "text": "..."}     a turn in the chat
           {"type": "step",  "text": "..."}     a line of trajectory
+          {"type": "url",   "value": "..."}    where the page is now
 
-The loop polls: it drains whatever is waiting on stdin, advances the script if a
-step is due, and sleeps a hundredth of a second. It does not block on a read,
-because a task has to be interruptible -- a stop that is only noticed once the
-work finishes is not a stop. That is why `pipes.py` distinguishes an empty pipe
-from a broken one: a broken one means the dashboard is gone, and this process
-ends, which is what keeps a force-killed dashboard from leaving children behind.
+The loop polls rather than blocks: it drains stdin, runs one queued action if one
+is due, and sleeps a hundredth of a second. Cancel is therefore noticed between
+actions, not during one -- a `goto` that is already waiting on a slow page will
+finish first. `pipes.py` reports a broken pipe as distinct from an empty one, and
+that is this process's only signal that the dashboard has gone.
 
-Input arriving mid-task is dropped rather than queued. The dashboard does not
-send any -- it refuses the Send button while a box is working -- and inventing a
-queue here would be inventing behaviour for a stand-in.
+Perception is a separate path from the dashboard's tiles, and has to be: DWM
+composites those on the GPU and never hands Python any pixels, so an agent that
+wants to see a page takes its own `page.screenshot()`. That is what `_shoot`
+exists to prove.
 
-The script:
-
-    every task    an opening line, then a few trajectory steps
-    first task    stops in the middle and asks the user something, so that the
-                  needs-input state is reachable without special effort
-    "fail"        a prompt containing the word fails instead of finishing -- the
-                  only way to see the failed state, and a deliberate cheat
-    otherwise     finishes with an answer
-
-MULTIBOX_STEP_MS overrides the pace between steps. It exists for the smoke test,
-which would otherwise take half a minute to watch a stand-in pretend to work.
+MULTIBOX_STEP_MS paces the stand-in only. Real work takes as long as it takes.
 """
 
 import json
 import os
+import re
+import struct
 import sys
+import tempfile
 import time
+from pathlib import Path
 
 import pipes
 from session import DONE, FAILED, IDLE, NEEDS_INPUT, WORKING
 
-STEP_S = int(os.environ.get("MULTIBOX_STEP_MS", "900")) / 1000.0
 POLL_S = 0.01
+STEP_S = int(os.environ.get("MULTIBOX_STEP_MS", "900")) / 1000.0
+NAV_TIMEOUT_MS = 20000
+CLICK_TIMEOUT_MS = 5000
 
-OPENING = "on it."
-QUESTION = "before I go further: which plan should I compare against? I can only pick one."
-ANSWER = "done — the Team plan is $20/month and it is the one marked recommended."
-FAILURE = "I gave up: the page stopped responding and three retries did not help."
-STOPPED = "stopped."
+# http://…, file:///…, or a bare domain with a dot in it.
+URL_PATTERN = re.compile(
+    r"(?:https?://|file:///)\S+|\b[\w-]+(?:\.[\w-]+)+(?:/\S*)?", re.IGNORECASE
+)
+
+ASK_FOR_URL = "which page should I open? give me a URL and I will go and look."
 
 
 def emit(kind, **fields):
@@ -64,14 +69,36 @@ def emit(kind, **fields):
     sys.stdout.flush()
 
 
-class StandIn:
-    """The script, as a queue of things to say spaced out in time.
+def find_url(text):
+    """The first thing in the text that looks like somewhere to go."""
+    match = URL_PATTERN.search(text or "")
+    if not match:
+        return None
+    url = match.group(0).rstrip(".,;:!?)\"'")
+    if "://" in url:
+        return url
+    return "https://" + url
 
-    A queue rather than a sequence of sleeps, so that between any two steps the
-    loop is free to notice a cancel.
+
+def png_size(data):
+    """Width and height straight out of a PNG header -- no image library here."""
+    try:
+        return struct.unpack(">II", data[16:24])
+    except struct.error:
+        return (0, 0)
+
+
+class Agent:
+    """The state machine, and a queue of things to do spaced out in time.
+
+    A queue rather than a straight line of calls, so that between any two actions
+    the loop is free to notice a cancel. Subclasses decide what goes in it.
     """
 
-    def __init__(self):
+    pace = 0.0
+
+    def __init__(self, name):
+        self.name = name
         self.state = IDLE
         self.tasks = 0
         self.queue = []
@@ -83,112 +110,308 @@ class StandIn:
         if self.state == WORKING:
             return  # the dashboard does not send these; do not invent a queue
         if self.state == NEEDS_INPUT:
-            self._resume(text)
+            self.set_state(WORKING)
+            self.resume(text)
         else:
-            self._start(text)
+            self.tasks += 1
+            emit("task")
+            self.set_state(WORKING)
+            self.start(text)
 
     def on_cancel(self):
-        """Stop now. The trajectory stays: it is what happened, and the next task
-        clears it anyway."""
+        """Stop now. Whatever is already in flight finishes first -- a browser
+        call cannot be interrupted from here -- but nothing else runs."""
         if self.state not in (WORKING, NEEDS_INPUT):
             return
         self.queue.clear()
-        self._step("stopped by you")
-        self._state(IDLE)
-        self._say(STOPPED)
+        self.step("stopped by you")
+        self.set_state(IDLE)
+        self.say("stopped.")
 
     # -- the clock ----------------------------------------------------------
 
     def tick(self, now):
         if not self.queue or now < self.due:
             return
-        self.queue.pop(0)()
-        self.due = now + STEP_S
+        action = self.queue.pop(0)
+        try:
+            action()
+        except Exception as exc:  # a dead page, a timeout, a missing element
+            self.fail(exc)
+        self.due = now + self.pace
 
-    def _run(self, actions):
+    def run(self, actions):
         self.queue = list(actions)
-        self.due = time.monotonic() + STEP_S
+        self.due = time.monotonic() + self.pace
+
+    def fail(self, exc):
+        self.queue.clear()
+        detail = str(exc).strip().splitlines()[0][:200] or exc.__class__.__name__
+        self.set_state(FAILED)
+        self.say(f"I gave up: {detail}")
+
+    # -- saying it ----------------------------------------------------------
+
+    def set_state(self, value):
+        self.state = value
+        emit("state", value=value)
+
+    def say(self, text):
+        emit("say", text=text)
+
+    def step(self, text):
+        emit("step", text=text)
+
+    def report_url(self):
+        """Tell the dashboard where the page is. Nothing to say without a page,
+        so the stand-in never does."""
+
+    def close(self):
+        pass
+
+    # -- for subclasses -----------------------------------------------------
+
+    def start(self, prompt):
+        raise NotImplementedError
+
+    def resume(self, answer):
+        raise NotImplementedError
+
+
+class BrowserAgent(Agent):
+    """Drives a real browser over CDP, following a fixed script.
+
+    It connects as an ordinary CDP client and takes the page the box already has,
+    rather than opening one of its own: the box *is* that window, and a second
+    tab would be invisible in the dashboard's mirror.
+    """
+
+    def __init__(self, name, endpoint):
+        super().__init__(name)
+        self.endpoint = endpoint
+        self._playwright = None
+        self._browser = None
+        self._page = None
 
     # -- the script ---------------------------------------------------------
 
-    def _start(self, prompt):
-        self.tasks += 1
-        emit("task")
-        self._state(WORKING)
-        self._say(OPENING)
+    def start(self, prompt):
+        self.say("on it.")
+        self.run([lambda: self._plan(prompt)])
 
+    def resume(self, answer):
+        self.run([lambda: self._plan(answer)])
+
+    def _plan(self, text):
+        """Decide, mechanically, what this task means: a URL to open, the page
+        that is already there, or a question back."""
+        page = self._connect()
+        url = find_url(text)
+        if url:
+            self.queue.extend([lambda: self._goto(url)] + self._look())
+        elif page.url and not page.url.startswith("about:"):
+            self.step(f"working with the page already open: {page.url}")
+            self.queue.extend(self._look())
+        else:
+            self.set_state(NEEDS_INPUT)
+            self.say(ASK_FOR_URL)
+
+    def _look(self):
+        return [self._shoot, self._describe, self._click_first_link, self._finish]
+
+    # -- the browser --------------------------------------------------------
+
+    def _connect(self):
+        if self._page is not None:
+            return self._page
+        # Imported here, not at the top: the stand-in path must not pay for
+        # Playwright, and `smoke.py` runs children with no browser at all.
+        from playwright.sync_api import sync_playwright
+
+        self._playwright = sync_playwright().start()
+        self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint)
+        self._page = self._existing_page()
+        self.step(f"connected over CDP to {self.endpoint}")
+        self.report_url()
+        return self._page
+
+    def _existing_page(self):
+        """Take the page the box already has, wherever CDP files it.
+
+        Attaching over CDP does not group targets the way the launching process
+        sees them: the box's page can turn up in any of the contexts, and
+        `contexts[0]` is often empty. Taking `contexts[0].pages[0]` therefore
+        misses it and falls through to opening a new one -- which is a *second*
+        window, invisible in the dashboard's mirror, quietly driven while the
+        tile shows an unchanged page. Search every context first.
+        """
+        for context in self._browser.contexts:
+            if context.pages:
+                return context.pages[0]
+        # Nothing open at all. Should not happen -- a box is launched with a page
+        # -- so say it rather than silently opening a window nobody can see.
+        self.step("the box had no page open; opening one")
+        context = (self._browser.contexts[0] if self._browser.contexts
+                   else self._browser.new_context())
+        return context.new_page()
+
+    def report_url(self):
+        """Where the page actually is.
+
+        The dashboard cannot see this for itself. The `page.url` its own
+        Playwright holds does not update for navigations made by another CDP
+        client, and this process is exactly that -- so without this the caption
+        under a tile would still read about:blank while the tile plainly shows
+        something else.
+        """
+        if self._page is not None:
+            emit("url", value=self._page.url)
+
+    def _goto(self, url):
+        self.step(f"goto {url}")
+        self._page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        self.step(f"landed on {self._page.url}")
+        self.report_url()
+
+    def _shoot(self):
+        """Take a real screenshot. Not shown anywhere yet -- what it proves is
+        that an agent here can see, which the dashboard's tiles cannot give it."""
+        data = self._page.screenshot()
+        width, height = png_size(data)
+        path = Path(tempfile.gettempdir()) / f"multibox-{self.name}.png"
+        path.write_bytes(data)
+        self.step(f"screenshot {width}x{height}, {len(data) // 1024} KB")
+
+    def _describe(self):
+        title = (self._page.title() or "").strip()
+        links = self._page.locator("a[href]").count()
+        self.step(f'title "{title}"' if title else "the page has no title")
+        self.step(f"{links} link{'' if links == 1 else 's'} on the page")
+        self._title = title
+        self._links = links
+
+    def _click_first_link(self):
+        if not getattr(self, "_links", 0):
+            self.step("no links to click")
+            return
+        link = self._page.locator("a[href]").first
+        label = (link.text_content() or "").strip().replace("\n", " ")[:40]
+        before = self._page.url
+        link.click(timeout=CLICK_TIMEOUT_MS)
+        self._page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        after = self._page.url
+        if after == before:
+            self.step(f'clicked "{label}" — the page did not change')
+        else:
+            self.step(f'clicked "{label}" → {after}')
+            self.report_url()
+
+    def _finish(self):
+        title = getattr(self, "_title", "")
+        where = self._page.url
+        self.set_state(DONE)
+        self.say(f'done — "{title}" at {where}' if title else f"done — {where}")
+
+    def close(self):
+        if self._playwright is not None:
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+
+class StandInAgent(Agent):
+    """No browser to drive, so it makes everything up on a timer.
+
+    This is what ran before there was CDP, kept because the fast checks want a
+    child with no browser behind it. It is a placeholder; do not make it cleverer.
+    """
+
+    pace = STEP_S
+
+    OPENING = "on it."
+    QUESTION = ("before I go further: which plan should I compare against? "
+                "I can only pick one.")
+    ANSWER = "done — the Team plan is $20/month and it is the one marked recommended."
+    FAILURE = "I gave up: the page stopped responding and three retries did not help."
+
+    def start(self, prompt):
+        self.say(self.OPENING)
         subject = prompt if len(prompt) <= 40 else prompt[:39] + "…"
         actions = [
-            lambda: self._step("opened the start page"),
-            lambda: self._step(f'searched for "{subject}"'),
+            lambda: self.step("opened the start page"),
+            lambda: self.step(f'searched for "{subject}"'),
         ]
         if "fail" in prompt.lower():
             actions += [
-                lambda: self._step("clicked the first result"),
-                lambda: self._step("timed out waiting for the page (1/3)"),
-                lambda: self._step("timed out waiting for the page (3/3)"),
-                lambda: self._finish(FAILED, FAILURE),
+                lambda: self.step("clicked the first result"),
+                lambda: self.step("timed out waiting for the page (1/3)"),
+                lambda: self.step("timed out waiting for the page (3/3)"),
+                lambda: self._finish(FAILED, self.FAILURE),
             ]
         elif self.tasks == 1:
             actions += [self._ask]
         else:
             actions += [
-                lambda: self._step("read the results"),
-                lambda: self._step('clicked "Pricing"'),
-                lambda: self._finish(DONE, ANSWER),
+                lambda: self.step("read the results"),
+                lambda: self.step('clicked "Pricing"'),
+                lambda: self._finish(DONE, self.ANSWER),
             ]
-        self._run(actions)
+        self.run(actions)
 
-    def _resume(self, answer):
-        self._state(WORKING)
-        self._run([
-            lambda: self._step(f"noted: {answer}"),
-            lambda: self._step('clicked "Pricing"'),
-            lambda: self._step("read the page"),
-            lambda: self._finish(DONE, ANSWER),
+    def resume(self, answer):
+        self.run([
+            lambda: self.step(f"noted: {answer}"),
+            lambda: self.step('clicked "Pricing"'),
+            lambda: self.step("read the page"),
+            lambda: self._finish(DONE, self.ANSWER),
         ])
 
     def _ask(self):
-        self._state(NEEDS_INPUT)
-        self._say(QUESTION)
+        self.set_state(NEEDS_INPUT)
+        self.say(self.QUESTION)
 
     def _finish(self, state, text):
-        self._state(state)
-        self._say(text)
+        self.set_state(state)
+        self.say(text)
 
-    # -- saying it ----------------------------------------------------------
 
-    def _state(self, value):
-        self.state = value
-        emit("state", value=value)
-
-    def _say(self, text):
-        emit("say", text=text)
-
-    def _step(self, text):
-        emit("step", text=text)
+def build(argv):
+    name = argv[1] if len(argv) > 1 else "box"
+    endpoint = None
+    if "--cdp" in argv:
+        index = argv.index("--cdp")
+        if index + 1 < len(argv):
+            endpoint = argv[index + 1]
+    return BrowserAgent(name, endpoint) if endpoint else StandInAgent(name)
 
 
 def main():
     reader = pipes.LineReader(sys.stdin.buffer)
-    agent = StandIn()
-    while True:
-        for line in reader.lines():
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            kind = message.get("type")
-            if kind == "input":
-                text = (message.get("text") or "").strip()
-                if text:
-                    agent.on_input(text)
-            elif kind == "cancel":
-                agent.on_cancel()
-        if reader.closed:
-            return 0  # the dashboard is gone
-        agent.tick(time.monotonic())
-        time.sleep(POLL_S)
+    agent = build(sys.argv)
+    try:
+        while True:
+            for line in reader.lines():
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    continue
+                kind = message.get("type")
+                if kind == "input":
+                    text = (message.get("text") or "").strip()
+                    if text:
+                        agent.on_input(text)
+                elif kind == "cancel":
+                    agent.on_cancel()
+            if reader.closed:
+                return 0  # the dashboard is gone
+            agent.tick(time.monotonic())
+            time.sleep(POLL_S)
+    finally:
+        # Playwright's driver is a child of this process; leaving without
+        # stopping it would leave a node.exe behind every time.
+        agent.close()
 
 
 if __name__ == "__main__":

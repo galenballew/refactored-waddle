@@ -222,7 +222,7 @@ class DetailView:
         self.canvas.delete("all")
         if self.box is None:
             return
-        self.url.configure(text=short_url(self.box.url))
+        self.url.configure(text=short_url(self.app.url_of(self.box)))
         dx, dy = self.offset
         rect = (
             self.viewport.left + dx, self.viewport.top + dy,

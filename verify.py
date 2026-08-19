@@ -17,7 +17,9 @@ The optional URL is where the boxes are pointed before the checks run.
    Alt-Tab entry
 9. a box added while the app is running is a real box: its own processes, its own
    window, parked, tiled, with a session and an agent child
-10. closing the dashboard takes every agent child process with it
+10. an agent drives its own box over CDP: told to open a page, the box's real
+    browser ends up there, and it took a screenshot on the way
+11. closing the dashboard takes every agent child process with it
 
 The fast checks -- views, the agent protocol, the state machine -- are in
 `smoke.py`, which needs no browsers and runs in about a second.
@@ -25,6 +27,7 @@ The fast checks -- views, the agent protocol, the state machine -- are in
 
 import ctypes
 import sys
+import tempfile
 import time
 import types
 from ctypes import wintypes
@@ -43,6 +46,8 @@ FOCUS_BUDGET_S = 5.0
 FOCUS_ATTEMPTS = 3
 HOLD_S = 1.0
 REFRESH_BUDGET_MS = 50.0
+# Long: a child has to start Playwright, attach over CDP and load a page.
+CDP_BUDGET_S = 45.0
 
 HERE = Path(__file__).parent
 FIXTURE = HERE / "_verify_page.html"
@@ -399,9 +404,11 @@ def check_add_box(app, manager):
         return False
     pump(app, 1.0)
 
+    endpoints = {b.cdp for b in manager.boxes if b is not box}
     checks = {
         "own pids": bool(box.pids) and not (box.pids & existing),
         "own window": box.ensure_hwnd() is not None and box.hwnd not in hwnds,
+        "own cdp port": bool(box.cdp) and box.cdp not in endpoints,
         "parked": _is_parked(box) if manager.hidden else True,
         "out of the shell": winfocus.is_tool_window(box.hwnd) if manager.hidden else True,
         "has a thumbnail": app.handles.get(box.name) is not None,
@@ -416,6 +423,52 @@ def check_add_box(app, manager):
     return ok
 
 
+def check_agent_drives(app, manager):
+    """Prove an agent really drives its own box.
+
+    This is what the process boundary was for. The dashboard never touches the
+    page; the thing that does lives in another process and reaches the browser
+    over CDP like any other client. What proves it is the page moving.
+
+    Two independent answers are wanted, because the agent's own word is not
+    evidence: what it reported, and what the browser says when asked directly.
+    There is no model in this loop -- the script finds a URL in the text and
+    goes there.
+    """
+    print("\n[10] an agent drives its own box over CDP")
+    box = manager.boxes[0]
+    session = app.sessions[box.name]
+    target = default_url()
+
+    app.send(box, f"open {target}")
+    deadline = time.time() + CDP_BUDGET_S
+    while time.time() < deadline and session.state in ("idle", "working"):
+        pump(app, 0.2)
+
+    try:
+        actually = box.page.evaluate("location.href")
+    except Exception as exc:
+        actually = f"(could not ask the page: {str(exc).splitlines()[0]})"
+    shot = Path(tempfile.gettempdir()) / f"multibox-{box.name}.png"
+    steps = " | ".join(session.steps)
+
+    checks = {
+        "finished the task": session.state == "done",
+        "reported the page": session.url == target,
+        "the browser agrees": actually == target,
+        "connected over CDP": "connected over CDP" in steps,
+        "took a screenshot": "screenshot" in steps and shot.exists(),
+    }
+    print(f"    state={session.state} url={session.url}")
+    print(f"    the page itself says {actually}")
+    for step in session.steps:
+        print(f"      . {step}")
+    ok = all(checks.values())
+    for label, good in checks.items():
+        print(f"    {label:<20} {'ok' if good else 'FAIL'}")
+    return ok
+
+
 def check_children(app):
     """Prove the dashboard takes its children with it.
 
@@ -424,7 +477,7 @@ def check_children(app):
     until someone finds five stray pythons in Task Manager a day later, which is
     why this is a check and not a habit.
     """
-    print("\n[10] agent children die with the dashboard")
+    print("\n[11] agent children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     running = [name for name, proc in procs if proc.poll() is None]
     ok = len(running) == len(procs)
@@ -472,6 +525,7 @@ def main():
             ("hidden", check_hidden(manager)),
         ]
         results.append(("add box", check_add_box(app, manager)))
+        results.append(("agent drives", check_agent_drives(app, manager)))
         results.append(("children", check_children(app)))
         app = None  # that check closed the dashboard; do not close it twice
     finally:

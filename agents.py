@@ -36,17 +36,23 @@ class Agent:
     """One box's driver. Same two calls the in-process fake had: send, and a
     change notification -- here as the return value of `pump`."""
 
-    def __init__(self, session):
+    def __init__(self, session, cdp=None):
         self.session = session
+        self.cdp = cdp
         self.proc = None
         self.reader = None
         self.start()
 
     def start(self):
+        # The CDP endpoint is the only thing about the box the child is told.
+        # Without one it has no browser to drive and falls back to a script.
+        command = [sys.executable, "-u", str(HOST), self.session.name]
+        if self.cdp:
+            command += ["--cdp", self.cdp]
         # stderr is left inherited on purpose: a traceback in a child belongs in
         # the console the dashboard was started from, not swallowed.
         self.proc = subprocess.Popen(
-            [sys.executable, "-u", str(HOST), self.session.name],
+            command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             bufsize=0,
@@ -116,6 +122,8 @@ class Agent:
             self.session.agent_says(message.get("text", ""))
         elif kind == "step":
             self.session.step(message.get("text", ""))
+        elif kind == "url":
+            self.session.url = message.get("value") or None
         else:
             return False
         return True

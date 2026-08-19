@@ -1,10 +1,10 @@
 # Plan: agents in the boxes
 
-Half built now. **M1 through M5 have landed; M6 and M7 have not.** The app today is
-a window manager whose chat is answered by a scripted stand-in running in its own
-child process per box: you can give a box a task, answer it, stop it, and add or
-close boxes while it runs. No model call, and no browser automation beyond what
-the window manager already did.
+Nearly built. **M1 through M6 have landed; only M7 has not.** Each box has an agent
+process that really drives its browser over CDP — opening pages, screenshotting
+them, reading them, clicking links — and you can task it, answer it, stop it, and
+add or close boxes while it runs. What is still missing is the only interesting
+part: nothing decides anything. There is no model call anywhere.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -14,7 +14,8 @@ drives its box over CDP, which needs no focus and no visible window, so the
 existing park/summon model survives untouched.
 
 Mocks are expected and fine at every stage. No model call happens until M7, and
-stopping at M6 with a fleet of scripted agents is a legitimate outcome.
+stopping here — a fleet of real browsers driven by scripts — is a legitimate
+outcome.
 
 ## Decisions already made
 
@@ -173,7 +174,28 @@ Two decisions to make when it is built, not now:
   profiles are already in-memory-only, and a restart returning to the configured
   fleet is consistent with that.
 
-### M6 — Real perception and action, still no model
+### M6 — Real perception and action, still no model — DONE
+
+The unproven piece proved fine: each box launches with its own
+`--remote-debugging-port`, and a child attaches with `connect_over_cdp` as an
+ordinary client while Playwright keeps its own connection. Two things were not
+fine, and both would have been easy to ship without noticing:
+
+- **`contexts[0].pages` is usually empty over CDP.** Taking it and falling
+  through to `new_page()` opens a *second* window — invisible in the dashboard's
+  mirror, quietly driven while the tile shows an unchanged page. The child now
+  searches every context for the box's existing page.
+- **`page.url` in the dashboard's process never updates** for a navigation made
+  by another CDP client, so captions read about:blank while the tile plainly
+  showed something else. `page.evaluate("location.href")` knows the truth, but
+  asking it costs a round trip on the Tk thread per box per tick — so the child
+  reports its URL instead, as a `url` message, and the caption trusts that.
+
+Check [10] proves the whole thing by asking two independent sources where the
+page ended up: what the agent reported, and what the browser says when evaluated
+directly. An agent's own word about its work is not evidence.
+
+The original plan follows.
 
 Each child connects to its own box's Chromium over CDP, takes `page.screenshot()`,
 and runs a hardcoded scripted browse: real clicks, real pages, real trajectory

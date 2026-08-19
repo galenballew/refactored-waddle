@@ -13,6 +13,7 @@ updating.
 
 import json
 import re
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Set
@@ -79,6 +80,19 @@ def normalize_url(url):
     return "https://" + url
 
 
+def free_port():
+    """A port nobody is listening on, for a box's CDP endpoint.
+
+    Racy by nature -- we let the OS pick one, drop it, and hand the number to
+    Chromium, which binds it a moment later. Nothing else here is opening ports,
+    and the alternative is fishing DevToolsActivePort out of a profile directory
+    that Playwright owns and does not tell us about.
+    """
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 @dataclass
 class Box:
     name: str
@@ -86,6 +100,10 @@ class Box:
     page: object
     pids: Set[int] = field(default_factory=set)
     hwnd: Optional[int] = None
+    # Where this box's agent reaches its browser. The dashboard never uses it:
+    # it exists to be handed to the child process, which is the only thing on
+    # this machine allowed to drive the page.
+    cdp: Optional[str] = None
 
     @property
     def url(self):
@@ -150,19 +168,26 @@ class BoxManager:
         start_url = self.config["start_url"]
         position = (LAUNCH_OFFSCREEN, LAUNCH_OFFSCREEN) if self.hidden else (0, 0)
 
+        # Each box listens for CDP on its own port, so its agent can attach as an
+        # ordinary client. Playwright keeps its own connection either way; a
+        # browser is happy to have more than one.
+        port = free_port()
+
         before = winfocus.chrome_pids()
         browser = self._playwright.chromium.launch(
             headless=False,
             args=[
                 f"--window-size={width},{height}",
                 f"--window-position={position[0]},{position[1]}",
+                f"--remote-debugging-port={port}",
             ],
         )
         page = browser.new_page(no_viewport=True)
         # PIDs that appeared during this launch belong to this box, which is how
         # we later find its OS window.
         pids = winfocus.chrome_pids() - before
-        box = Box(name=name, browser=browser, page=page, pids=pids)
+        box = Box(name=name, browser=browser, page=page, pids=pids,
+                  cdp=f"http://127.0.0.1:{port}")
         box.hwnd = winfocus.top_level_window(pids)
         self.boxes.append(box)
         # Park before returning, so at worst a single window is briefly on screen

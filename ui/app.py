@@ -60,7 +60,8 @@ class App:
         # separate process, reached only by sending a line and draining a pipe,
         # is real and is the point.
         self.agents = {
-            name: Agent(session) for name, session in self.sessions.items()
+            box.name: Agent(self.sessions[box.name], getattr(box, "cdp", None))
+            for box in manager.boxes
         }
 
         self.root = tk.Tk()
@@ -207,7 +208,8 @@ class App:
         if box is None:
             return None
         self.sessions[box.name] = Session(box.name)
-        self.agents[box.name] = Agent(self.sessions[box.name])
+        self.agents[box.name] = Agent(self.sessions[box.name],
+                                      getattr(box, "cdp", None))
         self._register(box)
         self.overview.relayout()
         return box
@@ -232,6 +234,17 @@ class App:
         self.manager.remove_box(box)
         self.overview.relayout()
         return True
+
+    def url_of(self, box):
+        """What to put under a tile.
+
+        The agent's word first: it is the one driving, and this process's
+        Playwright does not see navigations made from another CDP client.
+        """
+        session = self.sessions.get(box.name)
+        if session is not None and session.url:
+            return session.url
+        return box.url
 
     def waiting(self):
         """Boxes that have stopped and asked the user something, in fleet order.

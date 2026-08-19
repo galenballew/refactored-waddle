@@ -6,10 +6,10 @@ are parked off the desktop: no taskbar buttons, no Alt-Tab entries, nowhere on
 screen. Double-click a tile to open that window large, with a chat panel beside
 it.
 
-The chat is where a per-window agent will eventually be. Each window already has
-its own agent process, but what runs inside it is a scripted stand-in walking a
-fixed sequence on a timer. There is no AI anywhere in this program. `PLAN.md` has
-the milestones.
+Each window has its own agent process, which drives that window's browser over
+the DevTools protocol: it opens pages, reads them, takes screenshots and clicks
+links. What it does next is decided by a fixed script rather than by a model —
+there is no AI anywhere in this program. `PLAN.md` has the milestones.
 
 ## What you need
 
@@ -97,24 +97,31 @@ and no fan-out URL bar. Each window is dealt with one at a time.
 
 ## What actually answers you
 
-Nothing real, yet. Every window has its own agent process — a real child process,
-one per window — but what runs inside it is a scripted stand-in that ignores what
-you asked and follows a fixed sequence on a timer. The separation is the point:
-when a real agent arrives it replaces the contents of that process and nothing
-else changes. Knowing the script makes the app predictable to demo:
+A script, not a mind. Every window has its own agent process, which attaches to
+that window's browser over the DevTools protocol and really does drive it — but
+what it does next is decided by a fixed sequence, not by anything that thinks.
+**There is no AI or model call anywhere in this program.**
 
-- Every task starts with an opening line, then a few trajectory steps.
-- **The first task you give a window stops halfway and asks you a question.**
-  That is how `needs input` is reachable without special effort — answer it in
-  the chat and the window carries on to `done`.
-- **A task whose text contains the word "fail" ends in `failed`.** The only way
-  to see that state, and a deliberate cheat.
-- Anything else finishes with an answer.
-- **Stop** ends the run wherever it had got to, and says so.
+Given a task, an agent:
 
-The pages in the windows do not change while this happens. The stand-in never
-touches them — it has no access to them at all — and makes up everything it
-claims to have done.
+1. looks for a URL in what you typed — `example.com` counts, so does a full
+   `https://…` or a `file:///…` path;
+2. goes there, and says so;
+3. **takes a screenshot** of the page (written to your temp folder as
+   `multibox-<window>.png`);
+4. reads the page's title and counts its links;
+5. clicks the first link and reports where that landed;
+6. finishes, with the title and the final address.
+
+If you give it no URL and the window is sitting on a blank page, it stops and
+asks you for one — that is `needs input`, and answering with a URL carries it on.
+If it is already on a page, it works with that one. If a page will not load or a
+click times out, it says what went wrong and ends in `failed`. **Stop** ends the
+run between steps; a page load already in flight finishes first.
+
+What it does is real: the window really navigates, and you can watch it happen in
+the tile. What it *decides* is not intelligence, and the results it reports are
+only ever what a fixed script found.
 
 The browser windows are deliberately not on your desktop. You do not need to see
 them directly — that is what the tiles are for. They are still running normally
@@ -231,7 +238,7 @@ The thorough one needs real windows:
 .venv\Scripts\python.exe verify.py
 ```
 
-This launches the windows, builds the dashboard, and runs ten checks: each box
+This launches the windows, builds the dashboard, and runs eleven checks: each box
 is a live Chromium process with its own window; summoning a window puts it on
 screen and in the foreground within 5 seconds and parking it takes it back off
 every monitor; every box has its own live tile; the tile grid is laid out sanely
@@ -241,8 +248,9 @@ the screen, while every window is parked off-screen); a full dashboard refresh
 stays under its time budget; the tiles are still whole after the dashboard is
 maximised; a parked window has no taskbar button and no Alt-Tab entry; a window
 added while the app is running is a real one, with its own processes and its own
-window rather than someone else's; and closing the dashboard takes every agent
-process with it. It prints PASS or FAIL
+window rather than someone else's; an agent told to open a page really does drive
+its own browser there, screenshot and all; and closing the dashboard takes every
+agent process with it. It prints PASS or FAIL
 for each, then closes everything. Pass a URL as an argument
 to point the windows at it instead of the built-in local test page.
 
@@ -265,9 +273,9 @@ Deliberately left out. These are not missing features, they are decisions:
 - No charts, progress bars, or metrics.
 
 There is **no AI or model call anywhere in this codebase**, and no agent loop.
-What answers in the chat is the scripted stand-in described above — it makes no
-decisions and never touches the pages. `PLAN.md` describes how a real agent is
-meant to get there.
+The agents drive real browsers, but every decision they make comes from the fixed
+script described above. `PLAN.md` describes how a real one is meant to get there,
+and what would have to change: one file.
 
 Also worth knowing: profiles are temporary and thrown away when the app closes.
 The windows are separate browser launches, which keeps their cookies and storage
