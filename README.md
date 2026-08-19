@@ -6,9 +6,9 @@ are parked off the desktop: no taskbar buttons, no Alt-Tab entries, nowhere on
 screen. Double-click a tile to open that window large, with a chat panel beside
 it.
 
-The chat is where a per-window agent will eventually be. It is not connected to
-anything yet: what you type is recorded and nothing answers. `PLAN.md` has the
-milestones.
+The chat is where a per-window agent will eventually be. Nothing is connected
+yet: what answers you is a scripted stand-in that walks a fixed sequence on a
+timer. There is no AI anywhere in this program. `PLAN.md` has the milestones.
 
 ## What you need
 
@@ -38,21 +38,54 @@ two views.
 
 **The overview** is a grid of live tiles, one per window. Each tile is a real,
 continuously updating view of that browser — not a screenshot taken once at
-startup. The window name and current page are printed under each tile. Tiles show
-the whole browser window, so you will see its tab strip and address bar above the
-page itself.
+startup. The window name, what it is doing, and its current page are printed
+under each tile, and a coloured ring around a tile repeats its state so you can
+read the fleet at a glance. Tiles show the whole browser window, so you will see
+its tab strip and address bar above the page itself.
+
+Five states, and no others:
+
+| State | Means |
+| --- | --- |
+| **idle** | no task has been given to this window |
+| **working** | it is being driven right now |
+| **needs input** | it stopped and asked you something |
+| **done** | the task finished |
+| **failed** | it gave up, or something broke |
+
+`needs input` and `failed` are the two worth looking for — they are the ones that
+want you. Every state is spelled out in words next to its colour, so the colour
+is never the only signal.
 
 **Double-click a tile** to open that window's own view, which fills the
 dashboard:
 
 - **The live view** — the same live mirror, as large as the window allows.
-- **A chat panel** along the bottom. Type and press Enter and your message is
-  recorded in that window's transcript. Nothing answers it: no agent is connected
-  yet. Each window keeps its own transcript, and they are forgotten when the app
-  closes.
-- **A trajectory panel** beside the live view, where an agent's actions — pages
-  visited, things clicked — will be listed. Empty for now, and separate from the
-  chat on purpose, so that the chat stays short enough to read.
+- **A chat panel** along the bottom. Type and press Enter to give that window a
+  task; what it says back appears here. Each window keeps its own conversation,
+  and they are forgotten when the app closes.
+- **A trajectory panel** beside the live view, listing what the window did while
+  working — pages opened, things clicked. It is separate from the chat on
+  purpose, so the chat stays short enough to read. A new task clears it.
+- **The state**, as a coloured word next to the window's name.
+
+## What actually answers you
+
+Nothing real, yet. Every window is driven by a scripted stand-in that ignores
+what you asked and follows a fixed sequence on a timer. It exists so the states
+and the panels can be built and looked at before anything expensive is connected.
+Knowing its script makes the app predictable to demo:
+
+- Every task starts with an opening line, then a few trajectory steps.
+- **The first task you give a window stops halfway and asks you a question.**
+  That is how `needs input` is reachable without special effort — answer it in
+  the chat and the window carries on to `done`.
+- **A task whose text contains the word "fail" ends in `failed`.** The only way
+  to see that state, and a deliberate cheat.
+- Anything else finishes with an answer.
+
+The pages in the windows do not change while this happens. The stand-in never
+touches them: it makes up everything it claims to have done.
 - **"Take control"** summons the real browser window onto the middle of the
   screen and gives it the keyboard, for when you need to type into the page
   yourself. Click back on the dashboard, or switch to any other app, and it goes
@@ -167,9 +200,9 @@ Deliberately left out. These are not missing features, they are decisions:
 - No charts, progress bars, or metrics.
 
 There is **no AI or model call anywhere in this codebase**, and no agent loop.
-The chat panel and the trajectory panel are the places one will eventually
-attach; until then the chat records what you type and nothing replies. `PLAN.md`
-describes how it is meant to get there.
+What answers in the chat is the scripted stand-in described above — it makes no
+decisions and never touches the pages. `PLAN.md` describes how a real agent is
+meant to get there.
 
 Also worth knowing: profiles are temporary and thrown away when the app closes.
 The windows are separate browser launches, which keeps their cookies and storage

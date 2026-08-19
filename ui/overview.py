@@ -10,12 +10,14 @@ import tkinter as tk
 from tkinter import ttk
 
 import layout
+import session
 
 from . import theme
 from .text import clip, short_url
 
 LABEL_PAD = 6
 PAD = 12
+RING = 3  # how far outside the thumb the state ring sits
 
 
 class OverviewView:
@@ -63,29 +65,56 @@ class OverviewView:
         )
         self.draw()
 
+    def sync(self):
+        """Something a box is doing changed. Same work as a redraw."""
+        self.draw()
+
     def draw(self):
         dx, dy = self.offset
         self.canvas.delete("all")
         for tile, box in zip(self.tiles, self.app.manager.boxes):
+            state = self.app.sessions[box.name].state
             rect = (
                 tile.thumb.left + dx, tile.thumb.top + dy,
                 tile.thumb.right + dx, tile.thumb.bottom + dy,
             )
             if not self.app.place(box, rect):
                 self._draw_empty(tile)
-            # Labels must sit outside the thumb rect: thumbnails always
-            # composite above anything the canvas draws.
-            width = tile.label.right - tile.label.left
-            name_px = self.font.measure(box.name + "  ")
-            self.canvas.create_text(
-                tile.label.left, tile.label.top + 2, anchor="nw",
-                text=box.name, fill=theme.TEXT, font=self.font,
-            )
-            self.canvas.create_text(
-                tile.label.left + name_px, tile.label.top + 2, anchor="nw",
-                text=clip(self.font, short_url(box.url), width - name_px),
-                fill=theme.MUTED, font=self.font,
-            )
+            self._draw_ring(tile, state)
+            self._draw_caption(tile, box, state)
+
+    def _draw_ring(self, tile, state):
+        """A state-coloured ring around the tile, drawn OUTSIDE the thumb rect --
+        a thumbnail composites above the canvas, so anything inside it is
+        invisible. Idle gets no ring: five glowing tiles say nothing."""
+        if state == session.IDLE:
+            return
+        self.canvas.create_rectangle(
+            tile.thumb.left - RING, tile.thumb.top - RING,
+            tile.thumb.right + RING, tile.thumb.bottom + RING,
+            outline=theme.state_colour(state), width=2,
+        )
+
+    def _draw_caption(self, tile, box, state):
+        """name — state — url, on the strip under the tile."""
+        width = tile.label.right - tile.label.left
+        top = tile.label.top + 2
+        x = tile.label.left
+        self.canvas.create_text(
+            x, top, anchor="nw", text=box.name, fill=theme.TEXT, font=self.font
+        )
+        x += self.font.measure(box.name + "  ")
+        label = f"● {state}"
+        self.canvas.create_text(
+            x, top, anchor="nw", text=label, fill=theme.state_colour(state),
+            font=self.font,
+        )
+        x += self.font.measure(label + "  ")
+        self.canvas.create_text(
+            x, top, anchor="nw",
+            text=clip(self.font, short_url(box.url), tile.label.right - x),
+            fill=theme.MUTED, font=self.font,
+        )
 
     def _draw_empty(self, tile):
         self.canvas.create_rectangle(

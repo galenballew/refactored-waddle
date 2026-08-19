@@ -1,8 +1,11 @@
 """One box, up close: a live view of it, its chat, and what it has been doing.
 
-The chat is where the work will happen once there is an agent behind it. Today
-there is not: a message is recorded in the transcript and nothing answers, which
-is the honest state of the feature rather than a stub pretending to be one.
+The chat is where the work will happen once there is an agent behind it. What
+answers today is `fake_agent.py`, walking a script on a timer: the states are
+real, the transitions are real, and everything they describe is invented.
+
+The view decides none of it. It sends what was typed and redraws what the session
+says, which is the shape it will keep when the driver becomes a subprocess.
 
 The trajectory panel is separate from the chat on purpose. An agent's tool calls
 and page visits belong somewhere you can ignore, so that the chat stays short
@@ -17,6 +20,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import layout
+import session as session_model
 
 from . import theme
 from .text import short_url
@@ -24,7 +28,8 @@ from .text import short_url
 PAD = 12
 TRAJECTORY_W = 320
 CHAT_LINES = 5
-EMPTY_CHAT = "Nothing said yet. No agent is connected, so nothing will answer."
+EMPTY_CHAT = ("No task yet. Whatever you send is run by a scripted stand-in — "
+              "there is no agent behind this box.")
 EMPTY_TRAJECTORY = "no activity yet"
 
 
@@ -52,6 +57,12 @@ class DetailView:
         )
         self.note = ttk.Label(header, text="", style="Muted.TLabel")
         self.note.pack(side="right", padx=(0, 10))
+        # The same state word the tile shows, so the two views teach one
+        # vocabulary rather than two.
+        self.chip = tk.Label(
+            header, text="", bg=theme.BG, fg=theme.MUTED, font=app.fonts["body"]
+        )
+        self.chip.pack(side="right", padx=(0, 14))
 
         # -- chat, along the bottom so the last exchange is always in view
         chat = ttk.Frame(self.frame, style="Panel.TFrame")
@@ -95,8 +106,12 @@ class DetailView:
         if height:
             widget.configure(height=height)
         widget.tag_configure("speaker", foreground=theme.ACCENT)
+        widget.tag_configure("agent", foreground=theme.AGENT)
         widget.tag_configure("muted", foreground=theme.MUTED)
         return widget
+
+    def _session(self):
+        return self.app.sessions[self.box.name] if self.box else None
 
     # -- view protocol ------------------------------------------------------
 
@@ -111,8 +126,15 @@ class DetailView:
         self.box = box
         self.title.configure(text=box.name)
         self.note.configure(text="")
+        self.sync()
+
+    def sync(self):
+        """Redraw everything that follows the session: chip, chat, trajectory."""
+        state = self._session().state if self.box else session_model.IDLE
+        self.chip.configure(text=f"● {state}", fg=theme.state_colour(state))
         self._render_chat()
         self._render_trajectory()
+        self.draw()
 
     def relayout(self):
         self.offset = self.app.client_offset(self.canvas)
@@ -161,28 +183,37 @@ class DetailView:
         text = self.entry.get()
         if not text.strip():
             return
-        self.app.transcripts[self.box.name].add_user(text)
         self.entry.delete(0, "end")
-        self._render_chat()
+        # What this means -- a new task, or an answer to a question -- is the
+        # driver's decision, not the view's.
+        self.app.send(self.box, text)
+        self.sync()
 
     def _render_chat(self):
-        transcript = self.app.transcripts[self.box.name] if self.box else None
+        sess = self._session()
         self.transcript.configure(state="normal")
         self.transcript.delete("1.0", "end")
-        if not transcript or not transcript.turns:
+        if sess is None or not sess.turns:
             self.transcript.insert("end", EMPTY_CHAT, "muted")
         else:
-            for turn in transcript.turns:
-                self.transcript.insert("end", f"{turn.speaker}  ", "speaker")
+            for turn in sess.turns:
+                tag = "speaker" if turn.speaker == session_model.USER else "agent"
+                self.transcript.insert("end", f"{turn.speaker}  ", tag)
                 self.transcript.insert("end", f"{turn.text}\n")
         self.transcript.configure(state="disabled")
         self.transcript.see("end")
 
     def _render_trajectory(self):
+        sess = self._session()
         self.trajectory.configure(state="normal")
         self.trajectory.delete("1.0", "end")
-        self.trajectory.insert("end", EMPTY_TRAJECTORY, "muted")
+        if sess is None or not sess.steps:
+            self.trajectory.insert("end", EMPTY_TRAJECTORY, "muted")
+        else:
+            for step in sess.steps:
+                self.trajectory.insert("end", f"·  {step}\n")
         self.trajectory.configure(state="disabled")
+        self.trajectory.see("end")
 
     # -- actions ------------------------------------------------------------
 

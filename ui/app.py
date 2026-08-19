@@ -19,7 +19,8 @@ import tkinter as tk
 import layout
 import thumbs
 import winfocus
-from chat import Transcript
+from fake_agent import FakeAgent
+from session import Session
 
 from . import theme
 from .detail import DetailView
@@ -35,8 +36,14 @@ class App:
         self.dash = self.config.get("dashboard", {})
         self.handles = {}
         self.dest = None
-        self.transcripts = {box.name: Transcript() for box in manager.boxes}
         self.box = None  # the box being looked at, or None on the overview
+        self.sessions = {box.name: Session(box.name) for box in manager.boxes}
+        # One driver per box. A stand-in today; a subprocess later, reached
+        # through the same two calls (send, and a change notification back).
+        self.agents = {
+            name: FakeAgent(session, self._schedule, self._session_changed)
+            for name, session in self.sessions.items()
+        }
 
         self.root = tk.Tk()
         self.root.title("multibox")
@@ -141,6 +148,23 @@ class App:
     def aspect(self):
         size = self.source_size()
         return size[0] / size[1] if size else DEFAULT_ASPECT
+
+    # -- driving the boxes --------------------------------------------------
+
+    def send(self, box, text):
+        self.agents[box.name].send(text)
+
+    def _schedule(self, delay_ms, callback):
+        """The driver's timer. Tk's `after`, kept behind a call so that nothing
+        outside this package has to know that."""
+        self.root.after(delay_ms, callback)
+
+    def _session_changed(self):
+        """A box said or did something. Redraw now rather than waiting for the
+        next tick -- a second's lag between pressing Send and anything happening
+        reads as a broken app."""
+        if self.view is not None:
+            self.view.sync()
 
     # -- the tick -----------------------------------------------------------
 

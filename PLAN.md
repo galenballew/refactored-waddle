@@ -1,8 +1,9 @@
 # Plan: agents in the boxes
 
-Mostly planned work rather than built work. **M1 has landed; M2 onwards has not.**
-The app today is a window manager with a chat panel that nothing answers, and no
-agent concepts anywhere in the code.
+Mostly planned work rather than built work. **M1 and M2 have landed; M3 onwards
+has not.** The app today is a window manager whose chat is answered by a scripted
+stand-in on a timer. No model call, no subprocess, no browser automation beyond
+what the window manager already did.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -53,13 +54,21 @@ Nothing agent-shaped in the code: chat takes your message into an in-memory
 transcript and nothing answers it, and the trajectory panel is empty. Full spec
 below.
 
-### M2 — The five states, faked in-process
+### M2 — The five states, faked in-process — DONE
 
 A per-box state object, drawn as a tile treatment in the overview and a chip in
 the detail header. A scripted fake on `root.after` walks a box through
 Working → Needs input → Done or Failed when you send a prompt, and writes
 plausible entries into the trajectory panel as it goes. The point is to settle
 the visual language while changing it is still free. No process, no protocol.
+
+Landed as `session.py` (the model the UI renders) and `fake_agent.py` (the
+driver). The seam that matters is the one M3 inherits: the dashboard calls
+`send(text)` and gets a change notification back, the driver takes its timer as
+an injected `schedule(delay_ms, callback)` so it never imports Tk, and it never
+touches `box.page`. Two extras beyond the plan, both for reachability rather than
+realism: the first task on a box always stops to ask a question, and a prompt
+containing "fail" fails.
 
 ### M3 — The subprocess boundary
 

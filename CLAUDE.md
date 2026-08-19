@@ -11,8 +11,10 @@ work on it. Python + Playwright (sync API) + Tkinter + ctypes. Windows only.
 The dashboard has two views: an **overview** of every box as a live tile, and a
 **detail view** — double-click a tile — showing one box large, with a chat panel
 and a trajectory panel beside it. Those two panels are where an agent will
-eventually live. Today nothing is behind them: chat records what you type and
-nothing answers. See `PLAN.md` for the milestones and the decisions behind them.
+eventually live. What is behind them today is `fake_agent.py`, a scripted
+stand-in on a timer: the five states and their transitions are real, everything
+they describe is invented, and there is still no model call anywhere. See
+`PLAN.md` for the milestones and the decisions behind them.
 
 The dashboard is the **only window the user ever sees**. The boxes are *parked* —
 positioned clear of every monitor and dropped from the taskbar and Alt-Tab — and a
@@ -44,8 +46,10 @@ and will not work — use the venv (3.12).
 config.json   box names, start URL, window layout, dashboard size
 main.py       entry point: DPI awareness, launch boxes, run the dashboard
 boxes.py      only file that touches Playwright — one browser+page per box
-chat.py       in-memory transcripts, one per box. Nothing writes to them but the
-              user, and they die with the process
+session.py    per-box state, transcript and trajectory. The model the UI renders;
+              it decides nothing. In memory, dies with the process
+fake_agent.py a scripted stand-in for an agent: no model, no browser, no
+              decisions. Deleted at M3, when a subprocess replaces it
 ui/           only package that touches Tkinter
   app.py      the window: the two views, the thumbnail handles, the refresh tick,
               and the two triggers that send a summoned box back to its slot
@@ -78,6 +82,14 @@ with a correctness constraint worth testing.
   thread. A full tick — re-assert the parked layout, then redraw — measures ~2.5ms.
   If you ever move tiles to `page.screenshot()`, that guarantee is gone and the
   concurrency problem comes back.
+- **The driver seam is two calls, and it is load-bearing.** The dashboard calls
+  `send(text)` and gets a change notification back; that is all. The driver gets
+  its timer injected as `schedule(delay_ms, callback)` rather than importing Tk,
+  and it never touches `box.page`. Both rules exist so that M3 can swap the
+  stand-in for a subprocess without the UI noticing. Do not let the UI read the
+  driver's internals, and do not let the driver reach into a page.
+- **`session.py` decides nothing.** State changes come from the driver. A view
+  that sets a state itself is a bug, however convenient.
 - **Nothing is broadcast any more.** The dashboard has no fan-out control at all: a
   box is driven through its own chat, one box at a time. `BoxManager.navigate_all`
   survives with no caller in the UI because `verify.py` drives pages through it to
@@ -196,7 +208,9 @@ Deliberately out of scope. Do not add these even if they seem useful:
 Agents themselves are no longer on this list. Per-box agents are the plan of record
 — see `PLAN.md` — but nothing is connected yet: there is still **no AI or model call
 anywhere in this codebase**, and no agent loop. Do not add one ahead of the
-milestone that calls for it.
+milestone that calls for it, and do not make `fake_agent.py` cleverer — it is a
+placeholder whose whole job is to be deleted. If it needs to be smarter, the
+answer is M3, not a better fake.
 
 Two things to protect on the way there: DWM never returns pixels to Python, so agent
 perception needs a separate `page.screenshot()` path; and the eventual shape is one

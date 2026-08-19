@@ -10,6 +10,8 @@ same reason.
 import tkinter.font as tkfont
 from tkinter import ttk
 
+import session
+
 BG = "#141414"          # the window itself
 PANEL = "#1c1c1c"       # chat and trajectory panels
 FIELD = "#242424"       # inputs and buttons
@@ -23,6 +25,23 @@ ACCENT = "#6aa9e0"
 EMPTY_BG = "#2a1c1c"
 EMPTY_EDGE = "#5a3030"
 EMPTY_TEXT = "#a06060"
+
+AGENT = "#8fc7a1"       # who is speaking in a transcript, when it is not you
+
+# The state vocabulary, in colour. Idle recedes, working is calm, and the two
+# states that want you -- needs input and failed -- are the warm ones. Never the
+# only signal: every state is spelled out in words next to its colour.
+STATE = {
+    session.IDLE: "#5f5f5f",
+    session.WORKING: "#6aa9e0",
+    session.NEEDS_INPUT: "#e8b339",
+    session.DONE: "#6cc08b",
+    session.FAILED: "#d96a6a",
+}
+
+
+def state_colour(state):
+    return STATE.get(state, MUTED)
 
 FAMILY = "Segoe UI"
 MONO = "Consolas"
