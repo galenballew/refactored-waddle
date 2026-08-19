@@ -1,9 +1,9 @@
 # Plan: agents in the boxes
 
-Mostly planned work rather than built work. **M1 and M2 have landed; M3 onwards
-has not.** The app today is a window manager whose chat is answered by a scripted
-stand-in on a timer. No model call, no subprocess, no browser automation beyond
-what the window manager already did.
+Mostly planned work rather than built work. **M1, M2 and M3 have landed; M4
+onwards has not.** The app today is a window manager whose chat is answered by a
+scripted stand-in running in its own child process per box. No model call, and no
+browser automation beyond what the window manager already did.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -28,7 +28,7 @@ stopping at M6 with a fleet of scripted agents is a legitimate outcome.
 | Agent boundary | One subprocess per box, line-delimited JSON over stdio |
 | Real agent, eventually | Claude Agent SDK, driving its own box over CDP |
 | Persistence | In memory only, like the browser profiles. Nothing on disk |
-| Verification | Repair `verify.py` where this work breaks it. No new checks while the shape is still moving |
+| Verification | Repair `verify.py` where this work breaks it, rather than growing it. Since M3 there is also `smoke.py`: browserless, one second, safe to run mid-edit |
 | Sizing | Boxes launch at 1440x900, dashboard opens at 1600x1000 |
 | Fleet size | Fixed by `config.json` for now. A **+ Add box** on the overview lands in M5, so nothing may start assuming the count is constant |
 
@@ -64,14 +64,14 @@ plausible entries into the trajectory panel as it goes. The point is to settle
 the visual language while changing it is still free. No process, no protocol.
 
 Landed as `session.py` (the model the UI renders) and `fake_agent.py` (the
-driver). The seam that matters is the one M3 inherits: the dashboard calls
+driver, deleted again at M3). The seam that matters is the one M3 inherited: the dashboard calls
 `send(text)` and gets a change notification back, the driver takes its timer as
 an injected `schedule(delay_ms, callback)` so it never imports Tk, and it never
 touches `box.page`. Two extras beyond the plan, both for reachability rather than
 realism: the first task on a box always stops to ask a question, and a prompt
 containing "fail" fails.
 
-### M3 — The subprocess boundary
+### M3 — The subprocess boundary — DONE
 
 The fake moves out into `agent_host.py`: one child process per box, speaking
 line-delimited JSON over stdio. Dashboard side is spawn-at-start, non-blocking
@@ -85,6 +85,15 @@ does not allow. Two timers, one cheap.
 This is the milestone that makes the CLAUDE.md rule real: the dashboard never
 reaches through `box.page`, because the thing that touches the page lives in
 another process.
+
+Landed as `agents.py` (spawn, send, drain), `agent_host.py` (the child) and
+`pipes.py` (`PeekNamedPipe`, so a read never blocks and no reader threads are
+needed — the single-threaded rule stays literally true). The child's loop is a
+blocking read on its own stdin, which is what makes a force-killed dashboard
+leave nothing behind: the pipe closes and every child exits by itself. Two extras
+beyond the plan: `smoke.py` is now a committed second entry point covering the
+protocol and the state machine without browsers, and `verify.py` gained check [9]
+for children dying with the dashboard.
 
 ### M4 — Interaction completeness
 

@@ -15,6 +15,10 @@ The optional URL is where the boxes are pointed before the checks run.
 7. tiles stay whole when the dashboard is resized up to full screen
 8. a parked box is not a shell window: off every monitor, no taskbar button, no
    Alt-Tab entry
+9. closing the dashboard takes every agent child process with it
+
+The fast checks -- views, the agent protocol, the state machine -- are in
+`smoke.py`, which needs no browsers and runs in about a second.
 """
 
 import ctypes
@@ -368,6 +372,30 @@ def check_hidden(manager):
     return ok
 
 
+def check_children(app):
+    """Prove the dashboard takes its children with it.
+
+    Runs last, and quits the dashboard itself, because closing it is the thing
+    being tested. A leaked child is invisible -- no window, no taskbar button --
+    until someone finds five stray pythons in Task Manager a day later, which is
+    why this is a check and not a habit.
+    """
+    print("\n[9] agent children die with the dashboard")
+    procs = [(name, agent.proc) for name, agent in app.agents.items()]
+    running = [name for name, proc in procs if proc.poll() is None]
+    ok = len(running) == len(procs)
+    print(f"    {len(running)}/{len(procs)} children running before quit"
+          f"  {'ok' if ok else 'FAIL'}")
+
+    app.quit()
+    for name, proc in procs:
+        code = proc.poll()
+        good = code is not None
+        print(f"    {name:<8} exited={good} code={code}  {'ok' if good else 'FAIL'}")
+        ok = ok and good
+    return ok
+
+
 def cleanup():
     for path in [FIXTURE] + [HERE / f"_verify_{n}.html" for n in COLOUR_FIXTURES]:
         path.unlink(missing_ok=True)
@@ -399,6 +427,8 @@ def main():
             ("resize", check_resize(app, manager)),
             ("hidden", check_hidden(manager)),
         ]
+        results.append(("children", check_children(app)))
+        app = None  # that check closed the dashboard; do not close it twice
     finally:
         if app is not None:
             app.quit()

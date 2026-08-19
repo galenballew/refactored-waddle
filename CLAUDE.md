@@ -11,10 +11,11 @@ work on it. Python + Playwright (sync API) + Tkinter + ctypes. Windows only.
 The dashboard has two views: an **overview** of every box as a live tile, and a
 **detail view** — double-click a tile — showing one box large, with a chat panel
 and a trajectory panel beside it. Those two panels are where an agent will
-eventually live. What is behind them today is `fake_agent.py`, a scripted
-stand-in on a timer: the five states and their transitions are real, everything
-they describe is invented, and there is still no model call anywhere. See
-`PLAN.md` for the milestones and the decisions behind them.
+eventually live. What is behind them today is `agent_host.py`, one child process
+per box walking a scripted stand-in: the process boundary, the protocol and the
+five states are real, everything they describe is invented, and there is still no
+model call anywhere. See `PLAN.md` for the milestones and the decisions behind
+them.
 
 The dashboard is the **only window the user ever sees**. The boxes are *parked* —
 positioned clear of every monitor and dropped from the taskbar and Alt-Tab — and a
@@ -29,11 +30,15 @@ isolation — see the ephemeral-profiles note below.
 
 ```bash
 .venv\Scripts\python.exe main.py       # run the app
-.venv\Scripts\python.exe verify.py     # the eight proof checks; exits non-zero on failure
+.venv\Scripts\python.exe smoke.py      # fast checks: no browsers, ~1s
+.venv\Scripts\python.exe verify.py     # the nine proof checks; exits non-zero on failure
 ```
 
-`verify.py [url]` is the whole test suite — there is no pytest. It launches real
-windows and reads pixels off the screen, so it is slow (~60s), needs a desktop
+Two entry points, no pytest. `smoke.py` builds the real dashboard against fake
+boxes and spawns the real agent children, so views, the protocol and the state
+machine are covered without a browser, a desktop session or stolen focus — run it
+while editing. `verify.py [url]` is the one that proves the window management:
+real windows, pixels read off the screen, so it is slow (~60s), needs a desktop
 session, steals focus, and covers part of the screen while it runs.
 
 Setup: `python -m venv .venv`, then `pip install playwright` and
@@ -48,11 +53,14 @@ main.py       entry point: DPI awareness, launch boxes, run the dashboard
 boxes.py      only file that touches Playwright — one browser+page per box
 session.py    per-box state, transcript and trajectory. The model the UI renders;
               it decides nothing. In memory, dies with the process
-fake_agent.py a scripted stand-in for an agent: no model, no browser, no
-              decisions. Deleted at M3, when a subprocess replaces it
+agents.py     the dashboard's half of the agent boundary: spawn a child per box,
+              send it a line, drain what comes back into the session
+agent_host.py the child, one process per box. Still a scripted stand-in — no
+              model, no browser, no decisions. This is the file M7 replaces
+pipes.py      ctypes/kernel32: reading a child's stdout without blocking
 ui/           only package that touches Tkinter
-  app.py      the window: the two views, the thumbnail handles, the refresh tick,
-              and the two triggers that send a summoned box back to its slot
+  app.py      the window: the two views, the thumbnail handles, both timers, and
+              the two triggers that send a summoned box back to its slot
   overview.py the tile grid. Double-click opens a box
   detail.py   one box: live view, trajectory panel, chat
   theme.py    the palette, and the ttk styling that makes it stick
@@ -64,8 +72,9 @@ layout.py     pure geometry — grid rects, the detail viewport, hit testing,
               park/summon/cascade rects. No Tk, no Win32. `columns="auto"` picks
               the count that maximises tile area; in a tall narrow window that is
               usually 1, and 2 wastes two thirds of the panel.
-verify.py     the eight proof checks
-PLAN.md       the agent work: six milestones, and the decisions behind them
+smoke.py      the fast checks: dashboard plus agent children, no browsers
+verify.py     the nine proof checks
+PLAN.md       the agent work: seven milestones, and the decisions behind them
 ```
 
 Panel geometry inside a view is Tk's packer, not `layout.py`. Only rectangles a
@@ -80,14 +89,31 @@ with a correctness constraint worth testing.
   `mainloop` both want to own the calling thread. This survives a live dashboard only
   because DWM composites the tiles out-of-process — no capture work ever runs on the Tk
   thread. A full tick — re-assert the parked layout, then redraw — measures ~2.5ms.
-  If you ever move tiles to `page.screenshot()`, that guarantee is gone and the
-  concurrency problem comes back.
-- **The driver seam is two calls, and it is load-bearing.** The dashboard calls
-  `send(text)` and gets a change notification back; that is all. The driver gets
-  its timer injected as `schedule(delay_ms, callback)` rather than importing Tk,
-  and it never touches `box.page`. Both rules exist so that M3 can swap the
-  stand-in for a subprocess without the UI noticing. Do not let the UI read the
-  driver's internals, and do not let the driver reach into a page.
+  The agent children do not change this: they are separate processes, and reading
+  from them never blocks. If you ever move tiles to `page.screenshot()`, or give a
+  child a reader thread, that guarantee is gone and the concurrency problem comes
+  back.
+- **The agent is a separate process, and the seam is two calls.** `Agent.send(text)`
+  writes a line to a child; `Agent.pump()` drains whatever came back into the
+  session and says whether anything changed. That is the entire interface. The
+  dashboard knows nothing about what the child does, and the child is never handed
+  the box's page — it will reach its browser over CDP, like any other client.
+  Adding a back channel around this seam is how the boundary stops being real.
+- **The protocol is one JSON object per line, and both ends are dumb.** In:
+  `input`. Out: `task`, `state`, `say`, `step`. The child owns the state — the
+  dashboard mirrors it and never sets one itself. An unparseable line is ignored
+  rather than fatal, because a stray print in a child should not take the UI down.
+- **Nothing waits on a pipe.** `pipes.py` uses `PeekNamedPipe` to read only what
+  has already arrived, so draining five children costs nothing when they are
+  quiet. Do not "simplify" this into `readline()` on a reader thread: the
+  single-threaded rule above is the reason this app survives a live dashboard, and
+  it is worth a small ctypes module to keep it literally true.
+- **A child exits when its stdin closes**, because its loop is a read on stdin.
+  That is what makes a force-killed dashboard leave nothing behind, and it must
+  stay true of whatever replaces `agent_host.py`. Check [9] proves it.
+- **Two timers, deliberately.** `refresh` is the layout tick at 1s; `pump` drains
+  the children at 50ms. Do not merge them: chat on a one-second boundary reads as
+  broken, and running the desktop-repair work fifty times a second is waste.
 - **`session.py` decides nothing.** State changes come from the driver. A view
   that sets a state itself is a bug, however convenient.
 - **Nothing is broadcast any more.** The dashboard has no fan-out control at all: a
@@ -190,9 +216,11 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
   BitBlts whatever window happens to be in front and reads plausible-looking garbage
   — muddy mixed RGB rather than the flat 255/0/0 a real tile gives. Do not read that
   failure as a broken thumbnail.
-- Check [8] runs last on purpose: everything before it summons boxes, moves them
+- Check [8] runs late on purpose: everything before it summons boxes, moves them
   around and resizes the window, so passing means the fleet went back into hiding
-  by itself rather than merely starting out that way.
+  by itself rather than merely starting out that way. Check [9] runs after it
+  because it closes the dashboard to test what closing the dashboard does — it
+  owns the shutdown, and `main()` must not quit the app a second time.
 - Checks that read pixels off tiles need the **overview** showing. Check [4] enters
   and leaves the detail view, so it puts the overview back before it returns.
 
@@ -210,9 +238,9 @@ Deliberately out of scope. Do not add these even if they seem useful:
 Agents themselves are no longer on this list. Per-box agents are the plan of record
 — see `PLAN.md` — but nothing is connected yet: there is still **no AI or model call
 anywhere in this codebase**, and no agent loop. Do not add one ahead of the
-milestone that calls for it, and do not make `fake_agent.py` cleverer — it is a
-placeholder whose whole job is to be deleted. If it needs to be smarter, the
-answer is M3, not a better fake.
+milestone that calls for it, and do not make `agent_host.py`'s script cleverer —
+it is a placeholder whose whole job is to be replaced. If it needs to be smarter,
+the answer is M6, not a better fake.
 
 Two things to protect on the way there: DWM never returns pixels to Python, so agent
 perception needs a separate `page.screenshot()` path; and the eventual shape is one

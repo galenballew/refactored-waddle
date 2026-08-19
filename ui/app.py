@@ -1,4 +1,4 @@
-"""The dashboard window: two views, one set of live thumbnails, one refresh tick.
+"""The dashboard window: two views, one set of live thumbnails, two timers.
 
 It is still the only window the user ever sees. The boxes are parked off the
 desktop; this file owns the two triggers that send a summoned one back, and the
@@ -10,8 +10,14 @@ between them only moves the thumbnails -- nothing is re-registered, and no tile
 ever goes blank on a view change. Handles therefore belong here rather than to
 either view.
 
-Nothing in here captures pixels: the compositor draws the tiles out-of-process,
-which is the whole reason this stays single-threaded.
+The two timers do unrelated jobs at unrelated rates. `refresh` is the layout
+tick: put wandering windows back, redraw captions, once a second. `pump` drains
+the agent children, fifty times a second, because a chat that answers on a
+one-second boundary reads as broken. Both are cheap, and neither blocks.
+
+Nothing in here captures pixels, and nothing in here waits on a pipe: the
+compositor draws the tiles out-of-process and `pipes.py` reads only what has
+already arrived. That is what keeps a single thread enough.
 """
 
 import tkinter as tk
@@ -19,7 +25,7 @@ import tkinter as tk
 import layout
 import thumbs
 import winfocus
-from fake_agent import FakeAgent
+from agents import Agent
 from session import Session
 
 from . import theme
@@ -27,6 +33,10 @@ from .detail import DetailView
 from .overview import OverviewView
 
 DEFAULT_ASPECT = 4 / 3
+
+# How often the children are drained. Fast enough that a reply feels immediate,
+# and unrelated to the layout tick, which is slow work done rarely.
+PUMP_MS = 50
 
 
 class App:
@@ -38,11 +48,11 @@ class App:
         self.dest = None
         self.box = None  # the box being looked at, or None on the overview
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
-        # One driver per box. A stand-in today; a subprocess later, reached
-        # through the same two calls (send, and a change notification back).
+        # One child process per box. What it runs is a stand-in; that it is a
+        # separate process, reached only by sending a line and draining a pipe,
+        # is real and is the point.
         self.agents = {
-            name: FakeAgent(session, self._schedule, self._session_changed)
-            for name, session in self.sessions.items()
+            name: Agent(session) for name, session in self.sessions.items()
         }
 
         self.root = tk.Tk()
@@ -69,6 +79,7 @@ class App:
         self.register_all()
         self.show_overview()
         self.refresh()
+        self._pump_loop()
 
     # -- views --------------------------------------------------------------
 
@@ -154,17 +165,24 @@ class App:
     def send(self, box, text):
         self.agents[box.name].send(text)
 
-    def _schedule(self, delay_ms, callback):
-        """The driver's timer. Tk's `after`, kept behind a call so that nothing
-        outside this package has to know that."""
-        self.root.after(delay_ms, callback)
+    def pump(self):
+        """Drain every child into its session, and redraw if anything moved.
 
-    def _session_changed(self):
-        """A box said or did something. Redraw now rather than waiting for the
-        next tick -- a second's lag between pressing Send and anything happening
-        reads as a broken app."""
-        if self.view is not None:
+        Its own timer, much faster than the layout tick: chat that updates once a
+        second reads as a broken app, and speeding the layout tick up to match
+        would run the desktop-repair work fifty times as often for nothing.
+        Draining is cheap -- a PeekNamedPipe per child, and nothing else when
+        there is nothing waiting.
+        """
+        # Every child, every time: `any()` over a generator would stop draining
+        # at the first one with news.
+        moved = [agent.pump() for agent in self.agents.values()]
+        if any(moved) and self.view is not None:
             self.view.sync()
+
+    def _pump_loop(self):
+        self.pump()
+        self.root.after(PUMP_MS, self._pump_loop)
 
     # -- the tick -----------------------------------------------------------
 
@@ -194,6 +212,11 @@ class App:
         self.root.after(self.dash.get("refresh_ms", 1000), self.refresh)
 
     def quit(self):
+        # Children first: they exit on their own when the pipe closes, but
+        # waiting for them here is what makes "closed the dashboard" mean
+        # "nothing of ours is still running".
+        for agent in self.agents.values():
+            agent.close()
         for handle in self.handles.values():
             thumbs.unregister(handle)
         self.handles.clear()

@@ -6,9 +6,10 @@ are parked off the desktop: no taskbar buttons, no Alt-Tab entries, nowhere on
 screen. Double-click a tile to open that window large, with a chat panel beside
 it.
 
-The chat is where a per-window agent will eventually be. Nothing is connected
-yet: what answers you is a scripted stand-in that walks a fixed sequence on a
-timer. There is no AI anywhere in this program. `PLAN.md` has the milestones.
+The chat is where a per-window agent will eventually be. Each window already has
+its own agent process, but what runs inside it is a scripted stand-in walking a
+fixed sequence on a timer. There is no AI anywhere in this program. `PLAN.md` has
+the milestones.
 
 ## What you need
 
@@ -68,24 +69,6 @@ dashboard:
   working — pages opened, things clicked. It is separate from the chat on
   purpose, so the chat stays short enough to read. A new task clears it.
 - **The state**, as a coloured word next to the window's name.
-
-## What actually answers you
-
-Nothing real, yet. Every window is driven by a scripted stand-in that ignores
-what you asked and follows a fixed sequence on a timer. It exists so the states
-and the panels can be built and looked at before anything expensive is connected.
-Knowing its script makes the app predictable to demo:
-
-- Every task starts with an opening line, then a few trajectory steps.
-- **The first task you give a window stops halfway and asks you a question.**
-  That is how `needs input` is reachable without special effort — answer it in
-  the chat and the window carries on to `done`.
-- **A task whose text contains the word "fail" ends in `failed`.** The only way
-  to see that state, and a deliberate cheat.
-- Anything else finishes with an answer.
-
-The pages in the windows do not change while this happens. The stand-in never
-touches them: it makes up everything it claims to have done.
 - **"Take control"** summons the real browser window onto the middle of the
   screen and gives it the keyboard, for when you need to type into the page
   yourself. Click back on the dashboard, or switch to any other app, and it goes
@@ -97,6 +80,26 @@ touches them: it makes up everything it claims to have done.
 
 Nothing is broadcast to the windows: no clicks, no typing, no mouse positions,
 and no fan-out URL bar. Each window is dealt with one at a time.
+
+## What actually answers you
+
+Nothing real, yet. Every window has its own agent process — a real child process,
+one per window — but what runs inside it is a scripted stand-in that ignores what
+you asked and follows a fixed sequence on a timer. The separation is the point:
+when a real agent arrives it replaces the contents of that process and nothing
+else changes. Knowing the script makes the app predictable to demo:
+
+- Every task starts with an opening line, then a few trajectory steps.
+- **The first task you give a window stops halfway and asks you a question.**
+  That is how `needs input` is reachable without special effort — answer it in
+  the chat and the window carries on to `done`.
+- **A task whose text contains the word "fail" ends in `failed`.** The only way
+  to see that state, and a deliberate cheat.
+- Anything else finishes with an answer.
+
+The pages in the windows do not change while this happens. The stand-in never
+touches them — it has no access to them at all — and makes up everything it
+claims to have done.
 
 The browser windows are deliberately not on your desktop. You do not need to see
 them directly — that is what the tiles are for. They are still running normally
@@ -163,13 +166,31 @@ cannot click on. To clear those out without touching your normal Chrome:
 powershell -c "Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*ms-playwright*' } | Stop-Process -Force"
 ```
 
+The agent processes look after themselves. Each one exits the moment the
+dashboard's pipe to it closes, so a crash or a force-kill leaves none of them
+behind — there is nothing to clean up there.
+
 ## Checking that it works
+
+There are two of these. The quick one needs no browsers and takes about a
+second:
+
+```bash
+.venv\Scripts\python.exe smoke.py
+```
+
+It builds the real dashboard against stand-in windows and spawns the real agent
+processes, then checks the views, the message protocol, the five states, what
+happens when an agent process dies mid-task, and that closing the dashboard takes
+its agent processes with it. Run this one while you work.
+
+The thorough one needs real windows:
 
 ```bash
 .venv\Scripts\python.exe verify.py
 ```
 
-This launches the windows, builds the dashboard, and runs eight checks: each box
+This launches the windows, builds the dashboard, and runs nine checks: each box
 is a live Chromium process with its own window; summoning a window puts it on
 screen and in the foreground within 5 seconds and parking it takes it back off
 every monitor; every box has its own live tile; the tile grid is laid out sanely
@@ -177,8 +198,9 @@ and double-clicking tile *i* opens box *i*; the tiles show current page content
 (proven by flipping every page from red to blue and reading the pixels back off
 the screen, while every window is parked off-screen); a full dashboard refresh
 stays under its time budget; the tiles are still whole after the dashboard is
-maximised; and a parked window has no taskbar button and no Alt-Tab entry. It
-prints PASS or FAIL for each, then closes everything. Pass a URL as an argument
+maximised; a parked window has no taskbar button and no Alt-Tab entry; and
+closing the dashboard takes every agent process with it. It prints PASS or FAIL
+for each, then closes everything. Pass a URL as an argument
 to point the windows at it instead of the built-in local test page.
 
 Because it reads pixels off the screen, `verify.py` needs a desktop session, and
