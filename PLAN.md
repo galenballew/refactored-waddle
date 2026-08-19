@@ -1,0 +1,192 @@
+# Plan: agents in the boxes
+
+Planned work, not built work. Nothing described here exists yet. The app today is
+a window manager with no agent concepts anywhere in it, and the README's "What
+this is not" list is accurate as written until M1 lands.
+
+The goal: each box gets its own agent, and the dashboard becomes the place you
+talk to all of them. You give a box a task in chat, watch what its agent does,
+answer it when it needs you, and see at a glance which of the five is working,
+stuck, or done. The browser windows stay parked exactly as they are — the agent
+drives its box over CDP, which needs no focus and no visible window, so the
+existing park/summon model survives untouched.
+
+Mocks are expected and fine at every stage. No model call happens until M6, and
+stopping at M5 with a fleet of scripted agents is a legitimate outcome.
+
+## Decisions already made
+
+| Decision | Choice |
+| --- | --- |
+| Navigation | Two views: an overview grid, and a detail view entered by double-clicking a tile, with a Back button |
+| Chat | Detail view only. One transcript per box. Kept condensed so the last exchange is always visible |
+| Trajectory | A separate panel beside the viewport — tool calls and pages visited — so the chat does not fill up with them |
+| States | Idle / Working / Needs input / Done / Failed |
+| Broadcast bar | Removed. The URL box and Send-to-all/Reload-all go away |
+| Taking control | A nice-to-have, not a core path. Chat is the interface; you should never *have* to drive a box by hand |
+| Agent boundary | One subprocess per box, line-delimited JSON over stdio |
+| Real agent, eventually | Claude Agent SDK, driving its own box over CDP |
+| Persistence | In memory only, like the browser profiles. Nothing on disk |
+| Verification | Repair `verify.py` where this work breaks it. No new checks while the shape is still moving |
+| Sizing | Boxes launch at 1440x900, dashboard opens at 1600x1000 |
+
+Two of these are worth their reasoning:
+
+**Taking control stays in the code.** `summon`/`park` are built and check [3]
+proves them. Demoting the feature does not mean deleting the machinery — the
+detail view gets a small "Take control" button, and only *tile-click-to-summon*
+goes away. Removing working, verified code to save nothing would be a bad trade.
+
+**The subprocess boundary arrives at M3, not M1 and not M6.** M1 and M2 fake
+everything in-process, because the fastest way to settle a UI is to build the UI.
+From M3 on, every milestone works against the real boundary, so M6 changes one
+process's insides and nothing else. Building all the mock milestones in-process
+and splitting at the end would mean rewriting the interface at the exact moment
+the real agent is also new.
+
+## Milestones
+
+### M1 — Two-view dashboard, no agent anywhere
+
+Overview grid, detail view, chat shell, trajectory panel, dark styling pass.
+Nothing agent-shaped in the code: chat takes your message into an in-memory
+transcript and nothing answers it, and the trajectory panel is empty. Full spec
+below.
+
+### M2 — The five states, faked in-process
+
+A per-box state object, drawn as a tile treatment in the overview and a chip in
+the detail header. A scripted fake on `root.after` walks a box through
+Working → Needs input → Done or Failed when you send a prompt, and writes
+plausible entries into the trajectory panel as it goes. The point is to settle
+the visual language while changing it is still free. No process, no protocol.
+
+### M3 — The subprocess boundary
+
+The fake moves out into `agent_host.py`: one child process per box, speaking
+line-delimited JSON over stdio. Dashboard side is spawn-at-start, non-blocking
+pump, kill-on-exit, and crashed-child maps to Failed.
+
+The pump needs its own fast timer. The existing 1s refresh tick is a layout tick
+— chat polled at 1s feels underwater, and slowing the whole app down to fix that
+would put real work on the Tk thread, which is the one thing the architecture
+does not allow. Two timers, one cheap.
+
+This is the milestone that makes the CLAUDE.md rule real: the dashboard never
+reaches through `box.page`, because the thing that touches the page lives in
+another process.
+
+### M4 — Interaction completeness
+
+The needs-input round trip (agent asks, you answer in the pane, agent resumes),
+cancel/stop on a running task, attention routing so the overview tells you *which*
+box is waiting on you rather than making you check five of them, trajectory
+scrollback, and the "Take control" button if it has not already landed.
+
+### M5 — Real perception and action, still no model
+
+Each child connects to its own box's Chromium over CDP, takes `page.screenshot()`,
+and runs a hardcoded scripted browse: real clicks, real pages, real trajectory
+entries, real results in chat. Zero AI.
+
+This is the best place to stop if the prototype turns out to be good enough as a
+prototype. What you have at the end of M5 is a working multi-agent console whose
+agents happen to be scripts, and the only thing missing is the part that decides
+what to do next.
+
+Unproven piece: per-box CDP. Boxes will need `--remote-debugging-port` at launch
+(one port each) and the endpoint passed down to the child. Playwright-launched
+Chromium supports this, but this app has never done it, and box launch is also
+where PID attribution happens — the raciest thing in the codebase. Change launch
+carefully.
+
+### M6 — Swap in the model
+
+Replace the scripted driver inside the child with a Claude Agent SDK loop: API key
+handling, streaming turns into the transcript, cost. If M3 was done right, nothing
+outside `agent_host.py` changes. That is the test.
+
+## M1 in detail
+
+### Detail view
+
+```
+┌ ← Back    box3                                   [Idle] [Take control] ┐
+│ ┌──────────────────────────────┐ ┌───────────────────────────────────┐ │
+│ │  live view (DWM mirror)      │ │ trajectory                        │ │
+│ │  never scaled past 1440x900  │ │  · goto example.com               │ │
+│ │                              │ │  · click "Pricing"                │ │
+│ │                              │ │  · screenshot                     │ │
+│ └──────────────────────────────┘ └───────────────────────────────────┘ │
+│ ┌ chat ────────────────────────────────────────────────────────────── ┐ │
+│ │ you: find the pricing page                                          │ │
+│ │ [________________________________________________________] [Send]   │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Chat spans the bottom so the last exchange is always visible without scrolling.
+The trajectory sits beside the viewport, which is what keeps the chat readable
+once an agent is doing twenty things per task.
+
+The live view is a mirror, not the window: you cannot click into it. That is what
+the "Take control" button is for, and why it stays even though it is not a core
+path.
+
+### Sizing, and why the viewport is capped
+
+DWM will not reliably paint a thumbnail larger than its source window. It fails
+silently and partially — the far edge simply is not drawn — which reads as a
+cropped browser rather than as an error. So the detail viewport is capped at the
+box's own 1440x900 and centred in whatever space is left over. Downscaling is
+fine; upscaling is the bug. Check [8] exists for exactly this.
+
+Boxes go from 900x700 to 1440x900 because the detail view wants the headroom and
+pages deserve a realistic desktop viewport. Parked windows are off-screen, so the
+only cost is memory.
+
+### File by file
+
+- **`config.json`** — `window_size` to `[1440, 900]`, `dashboard.size` to
+  `[1600, 1000]`. Nothing else changes.
+- **`control.py` becomes a `ui/` package** — `ui/app.py` (root window and view
+  router), `ui/overview.py`, `ui/detail.py`, `ui/theme.py`. control.py is 256
+  lines today and M1 alone roughly doubles it, before M2–M4 add states, attention
+  cues and trajectory rendering. The architectural rule survives with its boundary
+  moved: **only `ui/` touches Tkinter.**
+- **`layout.py`** — keeps `tile_rects` for the overview, gains pure functions for
+  the detail view's viewport, trajectory and chat rects, with the same `max_thumb`
+  cap applied to the viewport. Still no Tk and no Win32 in this file.
+- **`thumbs.py`** — unchanged. Handles stay registered across a view switch,
+  because the destination is the same top-level window either way, and
+  `place(..., visible=False)` already exists for the four thumbnails the detail
+  view is not showing.
+- **`boxes.py`** — `reload_all` and `_broadcast` are deleted. `navigate_all`
+  survives as a **test fixture only**, with no UI: checks [6] and [8] both drive
+  pages through it to flip colours, and rewriting them buys nothing.
+- **`verify.py`** — check [2] (`check_broadcast`) is deleted; it proved a UI
+  feature that no longer exists. Nine checks become eight. Check [5]
+  (`check_tilemap`) needs its click assertion changed from "click tile *i* summons
+  box *i*" to "double-click tile *i* enters box *i*".
+- **`README.md` and `CLAUDE.md`** — the broadcast sections go. The "What this is
+  not" lists lose the no-log-panes item, because the trajectory panel is one, and
+  gain an honest note that the agent work is in progress rather than deferred.
+
+### Done when
+
+The app opens on a styled overview of five tiles. Double-clicking one fills the
+window with that box's live view, an empty trajectory panel and a working chat
+input. Back returns to the overview. Tiles stay live in both views, boxes stay
+parked throughout, and the eight remaining checks pass.
+
+## Things this plan is deliberately not doing
+
+The out-of-scope list in CLAUDE.md and the README is being partly reversed on
+purpose, and only partly. Still out, and not quietly coming back:
+
+- No scoring, ranking, prioritising, or automatic task swapping between boxes.
+- No cross-box messaging and no shared work queue. Five conversations, five
+  agents, no coordination layer.
+- No login handling, credential storage, containers, or remote execution.
+- No charts, metrics, or progress bars. The trajectory panel is a list of what an
+  agent did, not a dashboard about the dashboard.
