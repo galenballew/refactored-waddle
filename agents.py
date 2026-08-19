@@ -72,10 +72,17 @@ class Agent:
         if not self.alive:
             self.start()
             self.session.step(RESTARTED)
+        self._write({"type": "input", "text": text})
+
+    def cancel(self):
+        """Stop whatever the box is doing. The child decides what that means; if
+        it is not doing anything, it ignores this."""
+        if self.alive:
+            self._write({"type": "cancel"})
+
+    def _write(self, message):
         try:
-            self.proc.stdin.write(
-                (json.dumps({"type": "input", "text": text}) + "\n").encode("utf-8")
-            )
+            self.proc.stdin.write((json.dumps(message) + "\n").encode("utf-8"))
             self.proc.stdin.flush()
         except OSError:
             self._died()

@@ -74,6 +74,14 @@ def apply(root):
                     font=(FAMILY, 13, "bold"))
     style.configure("TButton", background=FIELD, foreground=TEXT, padding=(12, 5),
                     borderwidth=0)
+    # clam draws a scrollbar out of several colours, and the ones left at their
+    # defaults are what make it read as a light widget on a dark panel.
+    style.configure("Vertical.TScrollbar", background=FIELD, troughcolor=PANEL,
+                    bordercolor=PANEL, arrowcolor=MUTED, borderwidth=0, relief="flat",
+                    lightcolor=FIELD, darkcolor=FIELD, gripcount=0)
+    style.map("Vertical.TScrollbar",
+              background=[("active", "#3a3a3a"), ("disabled", PANEL)],
+              arrowcolor=[("disabled", PANEL)])
     style.map(
         "TButton",
         background=[("pressed", "#3a3a3a"), ("active", "#2e2e2e"),

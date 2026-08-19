@@ -41,8 +41,11 @@ two views.
 continuously updating view of that browser — not a screenshot taken once at
 startup. The window name, what it is doing, and its current page are printed
 under each tile, and a coloured ring around a tile repeats its state so you can
-read the fleet at a glance. Tiles show the whole browser window, so you will see
-its tab strip and address bar above the page itself.
+read the fleet at a glance. Along the top is a count of how many windows are in
+each state, and a button that opens whichever one is waiting on you — tiles never
+reorder themselves, so the fleet always looks the same shape. Tiles show the whole
+browser window, so you will see its tab strip and address bar above the page
+itself.
 
 Five states, and no others:
 
@@ -64,10 +67,17 @@ dashboard:
 - **The live view** — the same live mirror, as large as the window allows.
 - **A chat panel** along the bottom. Type and press Enter to give that window a
   task; what it says back appears here. Each window keeps its own conversation,
-  and they are forgotten when the app closes.
+  and they are forgotten when the app closes. A line under the transcript says
+  what the window will do with what you type next.
+- **Send and Stop.** While a window is working the input is disabled — it would
+  be ignored, and a message that vanishes is worse than a greyed-out box — and
+  **Stop** interrupts it. Stopping returns the window to `idle` and leaves the
+  trajectory alone: it is a record of what happened.
 - **A trajectory panel** beside the live view, listing what the window did while
   working — pages opened, things clicked. It is separate from the chat on
-  purpose, so the chat stays short enough to read. A new task clears it.
+  purpose, so the chat stays short enough to read. A new task clears it. Both
+  panels scroll, and scrolling back through one does not get yanked to the bottom
+  when the window says something new.
 - **The state**, as a coloured word next to the window's name.
 - **"Take control"** summons the real browser window onto the middle of the
   screen and gives it the keyboard, for when you need to type into the page
@@ -96,6 +106,7 @@ else changes. Knowing the script makes the app predictable to demo:
 - **A task whose text contains the word "fail" ends in `failed`.** The only way
   to see that state, and a deliberate cheat.
 - Anything else finishes with an answer.
+- **Stop** ends the run wherever it had got to, and says so.
 
 The pages in the windows do not change while this happens. The stand-in never
 touches them — it has no access to them at all — and makes up everything it

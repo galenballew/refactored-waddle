@@ -67,18 +67,25 @@ class DetailView:
         # -- chat, along the bottom so the last exchange is always in view
         chat = ttk.Frame(self.frame, style="Panel.TFrame")
         chat.pack(side="bottom", fill="x", padx=PAD, pady=(6, PAD))
-        self.transcript = self._text(chat, height=CHAT_LINES)
-        self.transcript.pack(side="top", fill="x", padx=10, pady=(10, 4))
+        holder, self.transcript = self._text(chat, height=CHAT_LINES)
+        holder.pack(side="top", fill="x", padx=10, pady=(10, 2))
+
+        self.hint = ttk.Label(chat, text="", style="PanelMuted.TLabel")
+        self.hint.pack(side="top", anchor="w", padx=10, pady=(0, 4))
 
         row = ttk.Frame(chat, style="Panel.TFrame")
         row.pack(side="top", fill="x", padx=10, pady=(0, 10))
         self.entry = tk.Entry(
             row, bg=theme.FIELD, fg=theme.TEXT, insertbackground=theme.TEXT,
+            disabledbackground=theme.PANEL, disabledforeground=theme.DIM,
             relief="flat", font=self.font,
         )
         self.entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
         self.entry.bind("<Return>", lambda _e: self.send())
-        ttk.Button(row, text="Send", command=self.send).pack(side="left")
+        self.send_button = ttk.Button(row, text="Send", command=self.send)
+        self.send_button.pack(side="left")
+        self.stop_button = ttk.Button(row, text="Stop", command=self.stop)
+        self.stop_button.pack(side="left", padx=(8, 0))
 
         # -- live view and trajectory
         middle = ttk.Frame(self.frame)
@@ -90,25 +97,67 @@ class DetailView:
         ttk.Label(panel, text="TRAJECTORY", style="PanelMuted.TLabel").pack(
             side="top", anchor="w", padx=10, pady=(10, 4)
         )
-        self.trajectory = self._text(panel, font=self.small)
-        self.trajectory.pack(side="top", fill="both", expand=True, padx=10, pady=(0, 10))
+        holder, self.trajectory = self._text(panel, font=self.small)
+        holder.pack(side="top", fill="both", expand=True, padx=10, pady=(0, 10))
 
         self.canvas = tk.Canvas(middle, bg=theme.BG, highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.canvas.bind("<Configure>", lambda _e: self.relayout())
 
+        app.root.bind_all("<MouseWheel>", self._on_wheel, add="+")
+
     def _text(self, parent, height=None, font=None):
+        """A read-only text panel with a scrollbar. Returns (container, widget)."""
+        holder = ttk.Frame(parent, style="Panel.TFrame")
         widget = tk.Text(
-            parent, bg=theme.PANEL, fg=theme.TEXT, relief="flat", highlightthickness=0,
+            holder, bg=theme.PANEL, fg=theme.TEXT, relief="flat", highlightthickness=0,
             wrap="word", font=font or self.font, state="disabled", cursor="arrow",
             spacing3=4,
         )
         if height:
             widget.configure(height=height)
+        bar = ttk.Scrollbar(holder, orient="vertical", command=widget.yview)
+        widget.configure(yscrollcommand=bar.set)
+        widget.pack(side="left", fill="both", expand=True)
+        bar.pack(side="right", fill="y")
         widget.tag_configure("speaker", foreground=theme.ACCENT)
         widget.tag_configure("agent", foreground=theme.AGENT)
         widget.tag_configure("muted", foreground=theme.MUTED)
-        return widget
+        return holder, widget
+
+    def _rewrite(self, widget, render):
+        """Re-render a panel without stealing the reader's place in it.
+
+        Everything is redrawn from the session on every change, which would
+        otherwise yank the view back to the bottom fifty times a second while
+        someone is reading back through a trajectory. Follow the end only if
+        they were already at the end.
+        """
+        first, last = widget.yview()
+        at_end = last >= 0.999
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        render(widget)
+        widget.configure(state="disabled")
+        if at_end:
+            widget.see("end")
+        else:
+            widget.yview_moveto(first)
+
+    def _on_wheel(self, event):
+        """Scroll whichever panel the pointer is over.
+
+        Windows delivers the wheel to the focused widget, which is the input box
+        while you are typing -- so without this, scrolling back through a
+        trajectory does nothing at all.
+        """
+        widget = self.frame.winfo_containing(event.x_root, event.y_root)
+        while widget is not None:
+            if widget in (self.transcript, self.trajectory):
+                widget.yview_scroll(-1 if event.delta > 0 else 1, "units")
+                return "break"
+            widget = widget.master
+        return None
 
     def _session(self):
         return self.app.sessions[self.box.name] if self.box else None
@@ -129,12 +178,32 @@ class DetailView:
         self.sync()
 
     def sync(self):
-        """Redraw everything that follows the session: chip, chat, trajectory."""
-        state = self._session().state if self.box else session_model.IDLE
+        """Redraw everything that follows the session: chip, controls, panels."""
+        sess = self._session()
+        state = sess.state if sess else session_model.IDLE
         self.chip.configure(text=f"● {state}", fg=theme.state_colour(state))
+
+        # Input is refused while a box is working, because the agent would drop
+        # it: better a disabled box and a reason than a message that vanishes.
+        working = state == session_model.WORKING
+        self.entry.configure(state="disabled" if working else "normal")
+        self.send_button.configure(state="disabled" if working else "normal")
+        self.stop_button.configure(
+            state="normal" if sess is not None and sess.active else "disabled"
+        )
+        self.hint.configure(text=self._hint(state))
+
         self._render_chat()
         self._render_trajectory()
         self.draw()
+
+    def _hint(self, state):
+        name = self.box.name if self.box else "this box"
+        if state == session_model.WORKING:
+            return f"{name} is working — Stop to interrupt it"
+        if state == session_model.NEEDS_INPUT:
+            return f"{name} is waiting on you — what you send next answers its question"
+        return ""
 
     def relayout(self):
         self.offset = self.app.client_offset(self.canvas)
@@ -189,31 +258,39 @@ class DetailView:
         self.app.send(self.box, text)
         self.sync()
 
+    def stop(self):
+        """Interrupt whatever the box is doing. Its trajectory stays: it is a
+        record of what happened, not of what was going to happen."""
+        if self.box is None:
+            return
+        self.app.cancel(self.box)
+        self.sync()
+
     def _render_chat(self):
         sess = self._session()
-        self.transcript.configure(state="normal")
-        self.transcript.delete("1.0", "end")
-        if sess is None or not sess.turns:
-            self.transcript.insert("end", EMPTY_CHAT, "muted")
-        else:
+
+        def render(widget):
+            if sess is None or not sess.turns:
+                widget.insert("end", EMPTY_CHAT, "muted")
+                return
             for turn in sess.turns:
                 tag = "speaker" if turn.speaker == session_model.USER else "agent"
-                self.transcript.insert("end", f"{turn.speaker}  ", tag)
-                self.transcript.insert("end", f"{turn.text}\n")
-        self.transcript.configure(state="disabled")
-        self.transcript.see("end")
+                widget.insert("end", f"{turn.speaker}  ", tag)
+                widget.insert("end", f"{turn.text}\n")
+
+        self._rewrite(self.transcript, render)
 
     def _render_trajectory(self):
         sess = self._session()
-        self.trajectory.configure(state="normal")
-        self.trajectory.delete("1.0", "end")
-        if sess is None or not sess.steps:
-            self.trajectory.insert("end", EMPTY_TRAJECTORY, "muted")
-        else:
+
+        def render(widget):
+            if sess is None or not sess.steps:
+                widget.insert("end", EMPTY_TRAJECTORY, "muted")
+                return
             for step in sess.steps:
-                self.trajectory.insert("end", f"·  {step}\n")
-        self.trajectory.configure(state="disabled")
-        self.trajectory.see("end")
+                widget.insert("end", f"·  {step}\n")
+
+        self._rewrite(self.trajectory, render)
 
     # -- actions ------------------------------------------------------------
 

@@ -1,9 +1,10 @@
 # Plan: agents in the boxes
 
-Mostly planned work rather than built work. **M1, M2 and M3 have landed; M4
+Mostly planned work rather than built work. **M1 through M4 have landed; M5
 onwards has not.** The app today is a window manager whose chat is answered by a
-scripted stand-in running in its own child process per box. No model call, and no
-browser automation beyond what the window manager already did.
+scripted stand-in running in its own child process per box: you can give a box a
+task, answer it, and stop it. No model call, and no browser automation beyond what
+the window manager already did.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -88,19 +89,32 @@ another process.
 
 Landed as `agents.py` (spawn, send, drain), `agent_host.py` (the child) and
 `pipes.py` (`PeekNamedPipe`, so a read never blocks and no reader threads are
-needed — the single-threaded rule stays literally true). The child's loop is a
-blocking read on its own stdin, which is what makes a force-killed dashboard
-leave nothing behind: the pipe closes and every child exits by itself. Two extras
+needed — the single-threaded rule stays literally true). A force-killed dashboard
+leaves nothing behind, because the child notices its pipe has gone and exits by
+itself. (Its loop was a blocking read here; M4 turned it into a poll so that a
+task could be interrupted.) Two extras
 beyond the plan: `smoke.py` is now a committed second entry point covering the
 protocol and the state machine without browsers, and `verify.py` gained check [9]
 for children dying with the dashboard.
 
-### M4 — Interaction completeness
+### M4 — Interaction completeness — DONE
 
 The needs-input round trip (agent asks, you answer in the pane, agent resumes),
 cancel/stop on a running task, attention routing so the overview tells you *which*
 box is waiting on you rather than making you check five of them, trajectory
 scrollback, and the "Take control" button if it has not already landed.
+
+Stop is the part with teeth. A stop noticed only when the work finishes is not a
+stop, so the child stopped blocking on stdin and now polls it between steps —
+which is why `pipes.py` had to learn the difference between an empty pipe and a
+broken one, since a broken one is the only thing that tells a child its dashboard
+is gone. `cancel` joins the protocol, and the buttons became honest: input is
+refused while a box is working, because the child drops it, and a message that
+silently vanishes is worse than a disabled field.
+
+Attention routing is navigation, not prioritisation: a per-state count in the
+header and a button that opens whoever is waiting. Tiles never reorder and
+nothing is scored — that stays on the do-not-add list.
 
 ### M5 — Growing the fleet: add a box at runtime
 

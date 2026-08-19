@@ -36,7 +36,19 @@ class OverviewView:
         ttk.Label(header, text="multibox", style="Head.TLabel").pack(side="left")
         ttk.Label(
             header, text="double-click a box to open it", style="Muted.TLabel"
-        ).pack(side="right")
+        ).pack(side="left", padx=(12, 0))
+        # Rightmost first: [ summary ] [ go to the box that needs you ]
+        self.jump = ttk.Button(header, text="", command=self.go_to_waiting)
+        self.jump.pack(side="right")
+        # One label per state rather than one string, so each count is in its own
+        # colour -- the same colour as the ring on the tiles it is counting.
+        summary = ttk.Frame(header)
+        summary.pack(side="right", padx=(0, 14))
+        self.counts = {}
+        for state in session.STATES:
+            label = tk.Label(summary, text="", bg=theme.BG,
+                             fg=theme.state_colour(state), font=self.font)
+            self.counts[state] = label
 
         self.canvas = tk.Canvas(self.frame, bg=theme.BG, highlightthickness=0)
         self.canvas.pack(side="top", fill="both", expand=True, padx=PAD, pady=(0, PAD))
@@ -69,8 +81,37 @@ class OverviewView:
         """Something a box is doing changed. Same work as a redraw."""
         self.draw()
 
+    def _draw_header(self):
+        """A count per state, and a way to reach whoever is waiting.
+
+        Pointing at a box is navigation, not prioritising: the tiles never
+        reorder, nothing is scored, and nothing moves unless you click.
+        """
+        counts = self.app.state_counts()
+        # Re-pack every time: packing order is insertion order, so a label that
+        # comes back after being hidden would otherwise jump to the end and the
+        # states would drift out of their fixed order.
+        for label in self.counts.values():
+            label.pack_forget()
+        for state in session.STATES:
+            if counts.get(state):
+                self.counts[state].configure(text=f"{counts[state]} {state}")
+                self.counts[state].pack(side="left", padx=(0, 12))
+        waiting = self.app.waiting()
+        if not waiting:
+            self.jump.configure(text="nothing needs you", state="disabled")
+            return
+        extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
+        self.jump.configure(text=f"go to {waiting[0].name}{extra}  →", state="normal")
+
+    def go_to_waiting(self):
+        waiting = self.app.waiting()
+        if waiting:
+            self.app.enter_detail(waiting[0])
+
     def draw(self):
         dx, dy = self.offset
+        self._draw_header()
         self.canvas.delete("all")
         for tile, box in zip(self.tiles, self.app.manager.boxes):
             state = self.app.sessions[box.name].state

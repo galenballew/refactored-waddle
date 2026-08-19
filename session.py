@@ -80,3 +80,9 @@ class Session:
     @property
     def wants_user(self):
         return self.state == NEEDS_INPUT
+
+    @property
+    def active(self):
+        """A task is in flight -- running, or stopped waiting on an answer.
+        Either way there is something to stop."""
+        return self.state in (WORKING, NEEDS_INPUT)

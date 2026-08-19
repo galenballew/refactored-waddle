@@ -165,6 +165,26 @@ class App:
     def send(self, box, text):
         self.agents[box.name].send(text)
 
+    def cancel(self, box):
+        self.agents[box.name].cancel()
+
+    def waiting(self):
+        """Boxes that have stopped and asked the user something, in fleet order.
+
+        Order, not ranking: there is no scoring here and there never will be.
+        It exists so the overview can point at the next one rather than making
+        you scan five tiles.
+        """
+        return [box for box in self.manager.boxes
+                if self.sessions[box.name].wants_user]
+
+    def state_counts(self):
+        """How many boxes are in each state, for the overview's summary line."""
+        counts = {}
+        for session in self.sessions.values():
+            counts[session.state] = counts.get(session.state, 0) + 1
+        return counts
+
     def pump(self):
         """Drain every child into its session, and redraw if anything moved.
 

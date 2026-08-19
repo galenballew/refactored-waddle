@@ -25,32 +25,51 @@ kernel32.PeekNamedPipe.argtypes = [
 kernel32.PeekNamedPipe.restype = wintypes.BOOL
 
 
+BROKEN = -1
+
+
 def available(fileobj):
-    """Bytes waiting on the pipe. Zero if it is empty, closed or broken."""
+    """Bytes waiting on the pipe, or BROKEN if the other end has gone.
+
+    Empty and gone have to be told apart: a child reading its own stdin this way
+    has nothing else to tell it the dashboard died, and a poll loop that cannot
+    see the difference would spin forever instead of exiting.
+    """
     try:
         handle = msvcrt.get_osfhandle(fileobj.fileno())
     except (ValueError, OSError):
-        return 0
+        return BROKEN
     count = wintypes.DWORD(0)
     if not kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(count), None):
-        return 0
+        return BROKEN
     return count.value
 
 
 class LineReader:
-    """Complete lines from a pipe, or nothing. Never waits."""
+    """Complete lines from a pipe, or nothing. Never waits.
+
+    `closed` goes true once the far end is gone, and stays true.
+    """
 
     def __init__(self, fileobj):
         self.fileobj = fileobj
+        self.closed = False
         self._tail = b""
 
     def lines(self):
         waiting = available(self.fileobj)
+        if waiting == BROKEN:
+            self.closed = True
+            waiting = 0
         if waiting:
             try:
-                self._tail += os.read(self.fileobj.fileno(), waiting)
+                chunk = os.read(self.fileobj.fileno(), waiting)
             except OSError:
-                return []
+                self.closed = True
+                chunk = b""
+            if not chunk:
+                self.closed = True
+            self._tail += chunk
         if b"\n" not in self._tail:
             return []
         *complete, self._tail = self._tail.split(b"\n")

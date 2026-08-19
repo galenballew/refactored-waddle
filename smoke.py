@@ -70,6 +70,10 @@ class FakeManager:
 
 
 def check(label, ok, detail=""):
+    # The console here is cp1252 and the app is full of arrows and bullets, so
+    # anything quoted back from the UI gets flattened rather than crashing the
+    # test that was about to pass.
+    detail = str(detail).encode("ascii", "replace").decode("ascii")
     print(f"    {label:<40} {'ok' if ok else 'FAIL'} {detail}")
     if not ok:
         FAILURES.append(label)
@@ -164,9 +168,116 @@ def check_task(app, manager):
     check("a failing task ends failed", state.state == model.FAILED, state.state)
 
 
+def check_stop(app, manager):
+    """A stop that is only noticed when the work finishes is not a stop."""
+    print("\n[4] stopping a task")
+    box = manager.boxes[3]
+    app.enter_detail(box)
+    state = app.sessions[box.name]
+
+    app.send(box, "a task to interrupt")
+    settle(app, 1)
+    # Working or needs-input, depending on how far a child running at test pace
+    # got. The child stops from either one the same way, so either is a fair
+    # test of the stop; which one it catches is not worth racing for.
+    check("the task is in flight", state.active, state.state)
+
+    before = len(state.steps)
+    app.cancel(box)
+    settle(app, 2)
+    check("stopping returns the box to idle", state.state == model.IDLE, state.state)
+    check("it says so in the chat", state.turns[-1].text == "stopped.")
+    check("the trajectory survives the stop", len(state.steps) > before)
+
+    steps = len(state.steps)
+    settle(app, 4)
+    check("and the script really stopped",
+          len(state.steps) == steps and state.state == model.IDLE)
+
+
+def check_controls(app, manager):
+    """The buttons have to tell the truth about what the box will accept."""
+    print("\n[5] the controls follow the state")
+    box = manager.boxes[4]
+    app.enter_detail(box)
+    state = app.sessions[box.name]
+
+    def controls():
+        return (str(app.detail.send_button["state"]),
+                str(app.detail.stop_button["state"]))
+
+    check("idle: send on, stop off", controls() == ("normal", "disabled"), controls())
+
+    # Set the state by hand rather than racing a child that finishes in
+    # milliseconds; the rule under test is the view's, not the script's.
+    state.state = model.WORKING
+    app.detail.sync()
+    check("working: send off, stop on", controls() == ("disabled", "normal"), controls())
+    check("the input is refused too", str(app.detail.entry["state"]) == "disabled")
+    check("and it says why", "Stop" in app.detail.hint.cget("text"))
+
+    state.state = model.NEEDS_INPUT
+    app.detail.sync()
+    check("needs input: send on, stop on", controls() == ("normal", "normal"), controls())
+    check("and it says what a reply means",
+          "answers" in app.detail.hint.cget("text"))
+
+    state.state = model.IDLE
+    app.detail.sync()
+    check("idle again: no hint", app.detail.hint.cget("text") == "")
+
+
+def check_attention(app, manager):
+    """Finding the box that wants you, without reordering anything."""
+    print("\n[6] attention")
+    box = manager.boxes[0]
+    app.send(box, "the first task, which always asks")
+    settle(app, 4)
+    check("the box is waiting on the user",
+          app.sessions[box.name].state == model.NEEDS_INPUT)
+
+    waiting = app.waiting()
+    check("waiting() names it", waiting and waiting[0] is box,
+          ", ".join(b.name for b in waiting))
+    counts = app.state_counts()
+    check("the counts add up", sum(counts.values()) == len(manager.boxes), counts)
+
+    app.show_overview()
+    app.root.update()
+    order = [t.index for t in app.overview.tiles]
+    check("the button offers the waiting box",
+          box.name in app.overview.jump.cget("text"), app.overview.jump.cget("text"))
+    check("tiles did not reorder", order == sorted(order))
+
+    app.overview.go_to_waiting()
+    app.root.update()
+    check("and it opens that box", app.box is box)
+
+
+def check_scrollback(app, manager):
+    """Updates must not yank a reader back to the bottom."""
+    print("\n[7] scrollback")
+    box = manager.boxes[2]
+    app.enter_detail(box)
+    app.root.update()
+    transcript = app.detail.transcript
+    check("the transcript has scrolled content", transcript.yview()[0] > 0,
+          f"{transcript.yview()}")
+
+    transcript.yview_moveto(0.0)
+    app.detail.sync()
+    check("scrolling back survives a redraw", transcript.yview()[0] == 0.0,
+          f"{transcript.yview()}")
+
+    transcript.yview_moveto(1.0)
+    app.detail.sync()
+    check("but the end still follows", transcript.yview()[1] >= 0.999,
+          f"{transcript.yview()}")
+
+
 def check_crash(app, manager):
     """A child that dies mid-task has to become visible, not silent."""
-    print("\n[4] a child that dies")
+    print("\n[8] a child that dies")
     box = manager.boxes[1]
     state = app.sessions[box.name]
     agent = app.agents[box.name]
@@ -193,7 +304,7 @@ def check_crash(app, manager):
 
 def check_shutdown(app):
     """The one failure that outlives the run: children left behind."""
-    print("\n[5] children die with the dashboard")
+    print("\n[9] children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     app.quit()
     ok = True
@@ -208,7 +319,7 @@ def check_shutdown(app):
 
 
 def check_geometry():
-    print("\n[6] viewport geometry")
+    print("\n[10] viewport geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -226,6 +337,10 @@ def main():
         check_views(app, manager)
         check_children(app)
         check_task(app, manager)
+        check_stop(app, manager)
+        check_controls(app, manager)
+        check_attention(app, manager)
+        check_scrollback(app, manager)
         check_crash(app, manager)
         check_shutdown(app)  # quits the app
         check_geometry()

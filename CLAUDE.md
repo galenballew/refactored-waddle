@@ -57,7 +57,8 @@ agents.py     the dashboard's half of the agent boundary: spawn a child per box,
               send it a line, drain what comes back into the session
 agent_host.py the child, one process per box. Still a scripted stand-in — no
               model, no browser, no decisions. This is the file M7 replaces
-pipes.py      ctypes/kernel32: reading a child's stdout without blocking
+pipes.py      ctypes/kernel32: reading a pipe without blocking, and telling an
+              empty one from a broken one. Used by both ends
 ui/           only package that touches Tkinter
   app.py      the window: the two views, the thumbnail handles, both timers, and
               the two triggers that send a summoned box back to its slot
@@ -100,17 +101,25 @@ with a correctness constraint worth testing.
   the box's page — it will reach its browser over CDP, like any other client.
   Adding a back channel around this seam is how the boundary stops being real.
 - **The protocol is one JSON object per line, and both ends are dumb.** In:
-  `input`. Out: `task`, `state`, `say`, `step`. The child owns the state — the
-  dashboard mirrors it and never sets one itself. An unparseable line is ignored
-  rather than fatal, because a stray print in a child should not take the UI down.
+  `input`, `cancel`. Out: `task`, `state`, `say`, `step`. The child owns the state
+  — the dashboard mirrors it and never sets one itself. An unparseable line is
+  ignored rather than fatal, because a stray print in a child should not take the
+  UI down.
+- **A child drops input while it is working, and the UI must not pretend
+  otherwise.** The detail view disables the input and the Send button while a box
+  is working, and offers Stop instead. Do not add a queue in the child to "fix"
+  this: queueing is behaviour, and inventing behaviour for a stand-in is how a
+  placeholder turns into a design.
 - **Nothing waits on a pipe.** `pipes.py` uses `PeekNamedPipe` to read only what
   has already arrived, so draining five children costs nothing when they are
   quiet. Do not "simplify" this into `readline()` on a reader thread: the
   single-threaded rule above is the reason this app survives a live dashboard, and
   it is worth a small ctypes module to keep it literally true.
-- **A child exits when its stdin closes**, because its loop is a read on stdin.
-  That is what makes a force-killed dashboard leave nothing behind, and it must
-  stay true of whatever replaces `agent_host.py`. Check [9] proves it.
+- **A child exits when its stdin goes away.** Its loop polls rather than blocks —
+  a task has to be interruptible, and a stop noticed only when the work finishes
+  is not a stop — so `pipes.py` reports BROKEN as distinct from empty, and that is
+  the child's only signal that the dashboard has gone. Losing it would mean
+  orphaned processes after a force-kill; check [9] proves it has not been lost.
 - **Two timers, deliberately.** `refresh` is the layout tick at 1s; `pump` drains
   the children at 50ms. Do not merge them: chat on a one-second boundary reads as
   broken, and running the desktop-repair work fifty times a second is waste.
