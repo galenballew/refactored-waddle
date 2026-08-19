@@ -1,9 +1,9 @@
 # Plan: agents in the boxes
 
-Mostly planned work rather than built work. **M1 through M4 have landed; M5
-onwards has not.** The app today is a window manager whose chat is answered by a
-scripted stand-in running in its own child process per box: you can give a box a
-task, answer it, and stop it. No model call, and no browser automation beyond what
+Half built now. **M1 through M5 have landed; M6 and M7 have not.** The app today is
+a window manager whose chat is answered by a scripted stand-in running in its own
+child process per box: you can give a box a task, answer it, stop it, and add or
+close boxes while it runs. No model call, and no browser automation beyond what
 the window manager already did.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
@@ -31,7 +31,7 @@ stopping at M6 with a fleet of scripted agents is a legitimate outcome.
 | Persistence | In memory only, like the browser profiles. Nothing on disk |
 | Verification | Repair `verify.py` where this work breaks it, rather than growing it. Since M3 there is also `smoke.py`: browserless, one second, safe to run mid-edit |
 | Sizing | Boxes launch at 1440x900, dashboard opens at 1600x1000 |
-| Fleet size | Fixed by `config.json` for now. A **+ Add box** on the overview lands in M5, so nothing may start assuming the count is constant |
+| Fleet size | Changes at runtime since M5: **+ Add box** on the overview, **Close box** in a detail view, `max_boxes` as the ceiling. `config.json` is only the starting list and is never written back |
 
 Two of these are worth their reasoning:
 
@@ -116,7 +116,22 @@ Attention routing is navigation, not prioritisation: a per-state count in the
 header and a button that opens whoever is waiting. Tiles never reorder and
 nothing is scored — that stays on the do-not-add list.
 
-### M5 — Growing the fleet: add a box at runtime
+### M5 — Growing the fleet: add a box at runtime — DONE
+
+Landed with both decisions taken the permissive way. **Removing a box shipped in
+the same milestone**, as "Close box" in the detail view rather than on the
+overview, so it cannot be hit while reaching for a tile; it is final and
+unconfirmed, like everything else here, and the last box refuses to go. **Nothing
+is written back to `config.json`**, which keeps an added box exactly as durable as
+the transcript it holds.
+
+The `MIN_TILE` floor got the third answer rather than a scroll or a cap: a
+`max_boxes` ceiling (12) stops the fleet running away, and when the grid genuinely
+cannot fit the overview now says so instead of going blank. `verify.py` gained
+check [9], which adds a real box and proves it owns processes and a window nobody
+else has — the PID-attribution risk below, tested rather than argued about.
+
+The original plan follows.
 
 A **+ Add box** tile at the end of the overview grid. Pressing it launches one
 more Chromium, parks it, registers its thumbnail, gives it a session and a driver

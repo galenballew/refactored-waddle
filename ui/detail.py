@@ -55,6 +55,9 @@ class DetailView:
         ttk.Button(header, text="Take control", command=self.take_control).pack(
             side="right"
         )
+        ttk.Button(header, text="Close box", command=self.close_box).pack(
+            side="right", padx=(0, 8)
+        )
         self.note = ttk.Label(header, text="", style="Muted.TLabel")
         self.note.pack(side="right", padx=(0, 10))
         # The same state word the tile shows, so the two views teach one
@@ -293,6 +296,18 @@ class DetailView:
         self._rewrite(self.trajectory, render)
 
     # -- actions ------------------------------------------------------------
+
+    def close_box(self):
+        """Shut this box down for good: its window, its agent, its conversation.
+
+        No confirmation, because nothing else in this app asks for one -- but it
+        is in here rather than on the overview, so it cannot be hit while
+        reaching for a tile.
+        """
+        if self.box is None:
+            return
+        if not self.app.remove_box(self.box):
+            self.note.configure(text="the last box stays")
 
     def take_control(self):
         """Put the real window on the desktop. Clicking back here parks it again.

@@ -3,6 +3,7 @@
   "start_url": "about:blank",
   "window_size": [1440, 900],
   "window_layout": "hidden",
+  "max_boxes": 12,
   "dashboard": {
     "size": [1600, 1000],
     "columns": "auto",

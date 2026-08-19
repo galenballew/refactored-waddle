@@ -29,7 +29,7 @@ import thumbs  # noqa: E402
 
 thumbs.set_dpi_awareness()
 
-from boxes import load_config  # noqa: E402
+from boxes import load_config, next_box_name  # noqa: E402
 from ui.app import App  # noqa: E402
 
 FAILURES = []
@@ -68,6 +68,24 @@ class FakeManager:
         self.summon_calls.append(box.name)
         return False
 
+    @property
+    def max_boxes(self):
+        return self.config.get("max_boxes", 12)
+
+    def add_box(self, name=None):
+        """No Playwright here, so this is the launch minus the slow part."""
+        if len(self.boxes) >= self.max_boxes:
+            return None
+        box = FakeBox(name or next_box_name([b.name for b in self.boxes]))
+        self.boxes.append(box)
+        return box
+
+    def remove_box(self, box):
+        if box not in self.boxes:
+            return False
+        self.boxes.remove(box)
+        return True
+
 
 def check(label, ok, detail=""):
     # The console here is cp1252 and the app is full of arrows and bullets, so
@@ -95,7 +113,8 @@ def settle(app, steps=8):
 def check_views(app, manager):
     print("\n[1] views")
     tiles = app.overview.tiles
-    check("a tile per box", len(tiles) == len(manager.boxes), f"{len(tiles)} tiles")
+    check("a tile per box, plus the add tile",
+          len(tiles) == len(manager.boxes) + 1, f"{len(tiles)} tiles")
     check("starts on the overview", app.view is app.overview and app.box is None)
 
     tile = tiles[2]
@@ -275,6 +294,52 @@ def check_scrollback(app, manager):
           f"{transcript.yview()}")
 
 
+def check_fleet(app, manager):
+    """Adding a box at runtime has to give it everything a box has."""
+    print("\n[9] growing and shrinking the fleet")
+    start = len(manager.boxes)
+
+    box = app.add_box()
+    check("a box appears", box is not None and len(manager.boxes) == start + 1,
+          box.name if box else "-")
+    check("named from the highest index", box.name == f"box{start + 1}", box.name)
+    # Straight away, before the debounce window has passed: a click queued behind
+    # the launch must be dropped rather than honoured late.
+    check("a second add straight after is dropped",
+          app.add_box() is None and len(manager.boxes) == start + 1)
+    check("it has a session", box.name in app.sessions)
+    check("and a child of its own", app.agents[box.name].alive)
+
+    app.show_overview()
+    app.root.update()
+    check("the grid grew, and still ends with the add tile",
+          len(app.overview.tiles) == start + 2, len(app.overview.tiles))
+
+    app.send(box, "prove the new one works")
+    settle(app, 4)
+    check("the new box takes a task",
+          app.sessions[box.name].state == model.NEEDS_INPUT,
+          app.sessions[box.name].state)
+
+    manager.config["max_boxes"] = len(manager.boxes)
+    check("the cap stops it", not app.can_add() and app.add_box() is None)
+    manager.config["max_boxes"] = 12
+
+    proc = app.agents[box.name].proc
+    app.enter_detail(box)
+    app.root.update()
+    app.detail.close_box()
+    app.root.update()
+    check("closing a box removes it", box not in manager.boxes)
+    check("its session goes with it", box.name not in app.sessions)
+    check("its child is stopped", proc.poll() is not None, proc.poll())
+    check("and we land back on the overview", app.view is app.overview)
+
+    while len(manager.boxes) > 1:
+        manager.remove_box(manager.boxes[-1])
+    check("the last box cannot be closed", app.remove_box(manager.boxes[0]) is False)
+
+
 def check_crash(app, manager):
     """A child that dies mid-task has to become visible, not silent."""
     print("\n[8] a child that dies")
@@ -304,7 +369,7 @@ def check_crash(app, manager):
 
 def check_shutdown(app):
     """The one failure that outlives the run: children left behind."""
-    print("\n[9] children die with the dashboard")
+    print("\n[10] children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     app.quit()
     ok = True
@@ -319,7 +384,7 @@ def check_shutdown(app):
 
 
 def check_geometry():
-    print("\n[10] viewport geometry")
+    print("\n[11] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -327,6 +392,8 @@ def check_geometry():
     check("fits a small space",
           small.right - small.left <= 800 and small.bottom - small.top <= 600,
           f"{small.right - small.left}x{small.bottom - small.top}")
+    check("the grid gives up rather than drawing specks",
+          layout.tile_rects(240, 160, 12, aspect=1.6) == [])
 
 
 def main():
@@ -342,6 +409,7 @@ def main():
         check_attention(app, manager)
         check_scrollback(app, manager)
         check_crash(app, manager)
+        check_fleet(app, manager)
         check_shutdown(app)  # quits the app
         check_geometry()
     finally:

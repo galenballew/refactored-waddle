@@ -20,6 +20,7 @@ compositor draws the tiles out-of-process and `pipes.py` reads only what has
 already arrived. That is what keeps a single thread enough.
 """
 
+import time
 import tkinter as tk
 
 import layout
@@ -38,6 +39,11 @@ DEFAULT_ASPECT = 4 / 3
 # and unrelated to the layout tick, which is slow work done rarely.
 PUMP_MS = 50
 
+# A launch blocks this thread, so clicks land in the queue and arrive the moment
+# it lets go. Long enough to swallow those, short enough that adding two boxes on
+# purpose still works.
+ADD_DEBOUNCE_S = 0.4
+
 
 class App:
     def __init__(self, manager):
@@ -47,6 +53,8 @@ class App:
         self.handles = {}
         self.dest = None
         self.box = None  # the box being looked at, or None on the overview
+        self.adding = False   # a launch is running on this thread right now
+        self._added_at = 0.0
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
         # One child process per box. What it runs is a stand-in; that it is a
         # separate process, reached only by sending a line and draining a pipe,
@@ -167,6 +175,63 @@ class App:
 
     def cancel(self, box):
         self.agents[box.name].cancel()
+
+    # -- growing and shrinking the fleet ------------------------------------
+
+    def can_add(self):
+        return len(self.manager.boxes) < self.manager.max_boxes
+
+    def add_box(self):
+        """Launch one more box and give it everything a box has.
+
+        This blocks the UI for a second or two: Playwright's sync API runs on
+        this thread and there is nowhere else to put it. The tiles stay live
+        throughout, because DWM composites them out-of-process; only the
+        dashboard stops answering.
+
+        Two clicks must not become two launches when the second one was queued
+        behind the first -- PID attribution only works while launches are
+        serialized -- so a launch in flight refuses, and so does anything that
+        arrives in the moment after one finishes.
+        """
+        if self.adding or not self.can_add():
+            return None
+        if time.monotonic() - self._added_at < ADD_DEBOUNCE_S:
+            return None
+        self.adding = True
+        try:
+            box = self.manager.add_box()
+        finally:
+            self.adding = False
+            self._added_at = time.monotonic()
+        if box is None:
+            return None
+        self.sessions[box.name] = Session(box.name)
+        self.agents[box.name] = Agent(self.sessions[box.name])
+        self._register(box)
+        self.overview.relayout()
+        return box
+
+    def remove_box(self, box):
+        """Close a box for good, and forget everything it said.
+
+        Refuses the last one: a dashboard with no boxes is not a state worth
+        having, and the app cannot get back out of it.
+        """
+        if len(self.manager.boxes) <= 1:
+            return False
+        if self.box is box:
+            self.show_overview()
+        agent = self.agents.pop(box.name, None)
+        if agent is not None:
+            agent.close()
+        self.sessions.pop(box.name, None)
+        handle = self.handles.pop(box.name, None)
+        if handle is not None:
+            thumbs.unregister(handle)
+        self.manager.remove_box(box)
+        self.overview.relayout()
+        return True
 
     def waiting(self):
         """Boxes that have stopped and asked the user something, in fleet order.

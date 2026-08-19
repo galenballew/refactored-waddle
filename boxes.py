@@ -12,6 +12,7 @@ updating.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Set
@@ -28,6 +29,7 @@ DEFAULTS = {
     "start_url": "about:blank",
     "window_size": [1440, 900],
     "window_layout": "hidden",
+    "max_boxes": 12,
     "dashboard": {"size": [1600, 1000], "columns": "auto", "gap": 10,
                   "refresh_ms": 1000},
 }
@@ -47,6 +49,24 @@ def load_config(path=CONFIG_PATH):
     if not config["boxes"]:
         raise ValueError(f"{path}: 'boxes' is empty, so there is nothing to launch")
     return config
+
+
+def next_box_name(names, stem="box"):
+    """`box7` after `box6`.
+
+    From the highest number seen rather than from the count, so that adding a box
+    after removing one cannot hand out a name that is already taken.
+    """
+    highest = 0
+    for name in names:
+        match = re.fullmatch(rf"{re.escape(stem)}(\d+)", name)
+        if match:
+            highest = max(highest, int(match.group(1)))
+    taken = set(names)
+    number = max(highest, len(names)) + 1
+    while f"{stem}{number}" in taken:  # custom names could still collide
+        number += 1
+    return f"{stem}{number}"
 
 
 def normalize_url(url):
@@ -102,35 +122,71 @@ class BoxManager:
         """True when boxes live off the desktop and the dashboard is the only window."""
         return self.config.get("window_layout", HIDDEN) == HIDDEN
 
+    @property
+    def max_boxes(self):
+        return self.config.get("max_boxes", DEFAULTS["max_boxes"])
+
     def start(self):
         self._playwright = sync_playwright().start()
+        for name in self.config["boxes"]:
+            self._launch(name)
+        return self.boxes
+
+    def add_box(self, name=None):
+        """One more box, launched now. Returns it, or None if there is no room.
+
+        Launches are serialized, and that is not a style preference: PID diffing
+        attributes every `chrome.exe` that appeared during a launch to the box
+        being launched, so two overlapping launches would hand one box's helper
+        processes to the other. The caller must not let a second add start while
+        this one is running.
+        """
+        if self._playwright is None or len(self.boxes) >= self.max_boxes:
+            return None
+        return self._launch(name or next_box_name([box.name for box in self.boxes]))
+
+    def _launch(self, name):
         width, height = self.config["window_size"]
         start_url = self.config["start_url"]
         position = (LAUNCH_OFFSCREEN, LAUNCH_OFFSCREEN) if self.hidden else (0, 0)
 
-        for index, name in enumerate(self.config["boxes"]):
-            before = winfocus.chrome_pids()
-            browser = self._playwright.chromium.launch(
-                headless=False,
-                args=[
-                    f"--window-size={width},{height}",
-                    f"--window-position={position[0]},{position[1]}",
-                ],
-            )
-            page = browser.new_page(no_viewport=True)
-            # PIDs that appeared during this launch belong to this box, which is
-            # how we later find its OS window.
-            pids = winfocus.chrome_pids() - before
-            box = Box(name=name, browser=browser, page=page, pids=pids)
-            box.hwnd = winfocus.top_level_window(pids)
-            # Park before launching the next one, so at worst a single window is
-            # briefly on screen rather than the whole fleet.
-            self._place(box, index)
-            if start_url and start_url != "about:blank":
-                page.goto(start_url, wait_until="commit")
-            self.boxes.append(box)
+        before = winfocus.chrome_pids()
+        browser = self._playwright.chromium.launch(
+            headless=False,
+            args=[
+                f"--window-size={width},{height}",
+                f"--window-position={position[0]},{position[1]}",
+            ],
+        )
+        page = browser.new_page(no_viewport=True)
+        # PIDs that appeared during this launch belong to this box, which is how
+        # we later find its OS window.
+        pids = winfocus.chrome_pids() - before
+        box = Box(name=name, browser=browser, page=page, pids=pids)
+        box.hwnd = winfocus.top_level_window(pids)
+        self.boxes.append(box)
+        # Park before returning, so at worst a single window is briefly on screen
+        # rather than the whole fleet.
+        self._place(box, len(self.boxes) - 1)
+        if start_url and start_url != "about:blank":
+            page.goto(start_url, wait_until="commit")
+        return box
 
-        return self.boxes
+    def remove_box(self, box):
+        """Close one box for good. Its window, its browser and its slot go away;
+        whatever was said to it is gone with them."""
+        if box not in self.boxes:
+            return False
+        if self.summoned is box:
+            self.summoned = None
+        try:
+            box.browser.close()
+        except Exception:
+            pass
+        self.boxes.remove(box)
+        # Slots are positional, so everything after the hole moves up one.
+        self.reassert_layout()
+        return True
 
     def reassert_layout(self):
         """Push any box that has wandered back where it belongs, leaving the

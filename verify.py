@@ -15,7 +15,9 @@ The optional URL is where the boxes are pointed before the checks run.
 7. tiles stay whole when the dashboard is resized up to full screen
 8. a parked box is not a shell window: off every monitor, no taskbar button, no
    Alt-Tab entry
-9. closing the dashboard takes every agent child process with it
+9. a box added while the app is running is a real box: its own processes, its own
+   window, parked, tiled, with a session and an agent child
+10. closing the dashboard takes every agent child process with it
 
 The fast checks -- views, the agent protocol, the state machine -- are in
 `smoke.py`, which needs no browsers and runs in about a second.
@@ -219,8 +221,10 @@ def check_tilemap(app, manager):
     overview = app.overview
     tiles = overview.tiles
     count = len(manager.boxes)
-    ok = len(tiles) == count
-    print(f"    {len(tiles)} tiles for {count} boxes  {'ok' if ok else 'FAIL'}")
+    # One cell past the fleet: the last tile is "+ Add box".
+    ok = len(tiles) == count + 1
+    print(f"    {len(tiles)} tiles for {count} boxes plus the add tile"
+          f"  {'ok' if ok else 'FAIL'}")
 
     width, height = overview.canvas.winfo_width(), overview.canvas.winfo_height()
     for tile in tiles:
@@ -248,7 +252,7 @@ def check_tilemap(app, manager):
 
     # Double-clicking tile i must open box i, and Back must come home again.
     # The handler only reads x and y off the event, so a stand-in will do.
-    for tile in tiles:
+    for tile in tiles[:count]:  # the add tile opens nothing
         centre_x = (tile.cell.left + tile.cell.right) // 2
         centre_y = (tile.cell.top + tile.cell.bottom) // 2
         overview.on_double_click(types.SimpleNamespace(x=centre_x, y=centre_y))
@@ -372,6 +376,46 @@ def check_hidden(manager):
     return ok
 
 
+def check_add_box(app, manager):
+    """Prove a box added while the app is running is a real box.
+
+    The thing at risk is PID attribution. `_launch` credits every `chrome.exe`
+    that appeared during the launch to the box being launched, which only holds
+    while launches are serialized -- so the box that comes back must own PIDs
+    nobody else has, and a window nobody else has. Everything else here is the
+    rest of what a box is: parked, out of the shell, mirrored in a tile, with a
+    session and a child of its own.
+    """
+    print("\n[9] adding a box at runtime")
+    existing = set()
+    for box in manager.boxes:
+        existing |= box.pids
+    hwnds = {box.hwnd for box in manager.boxes}
+    count = len(manager.boxes)
+
+    box = app.add_box()
+    if box is None:
+        print("    add_box refused  FAIL")
+        return False
+    pump(app, 1.0)
+
+    checks = {
+        "own pids": bool(box.pids) and not (box.pids & existing),
+        "own window": box.ensure_hwnd() is not None and box.hwnd not in hwnds,
+        "parked": _is_parked(box) if manager.hidden else True,
+        "out of the shell": winfocus.is_tool_window(box.hwnd) if manager.hidden else True,
+        "has a thumbnail": app.handles.get(box.name) is not None,
+        "has a session": box.name in app.sessions,
+        "has a live child": box.name in app.agents and app.agents[box.name].alive,
+        "grid grew": len(app.overview.tiles) == count + 2,  # +1 box, +1 add tile
+    }
+    ok = all(checks.values())
+    print(f"    added {box.name}, pids={sorted(box.pids)} hwnd={box.hwnd}")
+    for label, good in checks.items():
+        print(f"    {label:<18} {'ok' if good else 'FAIL'}")
+    return ok
+
+
 def check_children(app):
     """Prove the dashboard takes its children with it.
 
@@ -380,7 +424,7 @@ def check_children(app):
     until someone finds five stray pythons in Task Manager a day later, which is
     why this is a check and not a habit.
     """
-    print("\n[9] agent children die with the dashboard")
+    print("\n[10] agent children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     running = [name for name, proc in procs if proc.poll() is None]
     ok = len(running) == len(procs)
@@ -427,6 +471,7 @@ def main():
             ("resize", check_resize(app, manager)),
             ("hidden", check_hidden(manager)),
         ]
+        results.append(("add box", check_add_box(app, manager)))
         results.append(("children", check_children(app)))
         app = None  # that check closed the dashboard; do not close it twice
     finally:

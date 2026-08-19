@@ -31,7 +31,7 @@ isolation — see the ephemeral-profiles note below.
 ```bash
 .venv\Scripts\python.exe main.py       # run the app
 .venv\Scripts\python.exe smoke.py      # fast checks: no browsers, ~1s
-.venv\Scripts\python.exe verify.py     # the nine proof checks; exits non-zero on failure
+.venv\Scripts\python.exe verify.py     # the ten proof checks; exits non-zero on failure
 ```
 
 Two entry points, no pytest. `smoke.py` builds the real dashboard against fake
@@ -74,7 +74,7 @@ layout.py     pure geometry — grid rects, the detail viewport, hit testing,
               the count that maximises tile area; in a tall narrow window that is
               usually 1, and 2 wastes two thirds of the panel.
 smoke.py      the fast checks: dashboard plus agent children, no browsers
-verify.py     the nine proof checks
+verify.py     the ten proof checks
 PLAN.md       the agent work: seven milestones, and the decisions behind them
 ```
 
@@ -168,10 +168,21 @@ with a correctness constraint worth testing.
   pixels and no conversion is needed anywhere. Dev machine runs at 150%.
 - **Ephemeral profiles.** No persistent user-data-dir, no isolation guarantees, no
   cross-box checks. Do not describe this as a security boundary.
-- **Config drives box count and names.** `len(config["boxes"])` is the window count;
-  nothing hardcodes 5. Keep it that way, and do not let anything cache the count
-  either: adding a box at runtime from the overview is planned (PLAN.md, M5), so
-  the fleet is about to stop being constant as well as unhardcoded.
+- **The fleet changes at runtime.** `config.json` is only the starting list: "+ Add
+  box" launches another one and "Close box" ends one, so nothing may hardcode or
+  cache the count. Config is never written back — an added box is gone on restart,
+  like the transcripts and the profiles.
+- **Adds must stay serialized, and the UI is what guarantees it.** PID attribution
+  credits every `chrome.exe` that appeared during a launch to the box being
+  launched, so two overlapping launches would mix up two boxes' processes. A
+  launch blocks the Tk thread, which means clicks queue up in the OS and arrive
+  the instant it finishes — hence `ADD_DEBOUNCE_S` in `ui/app.py`, which drops
+  them. Removing that guard reintroduces a bug that looks like a window-management
+  failure, not a click-handling one.
+- **The overview grid is `len(boxes) + 1` cells.** The last one is the add tile,
+  and it is part of the same grid so the layout stays one shape. Anything indexing
+  tiles against boxes has to account for it — `tile_screen_rects` returns box
+  tiles only, for exactly this reason.
 
 ## DWM thumbnail rules
 
@@ -227,9 +238,10 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
   failure as a broken thumbnail.
 - Check [8] runs late on purpose: everything before it summons boxes, moves them
   around and resizes the window, so passing means the fleet went back into hiding
-  by itself rather than merely starting out that way. Check [9] runs after it
-  because it closes the dashboard to test what closing the dashboard does — it
-  owns the shutdown, and `main()` must not quit the app a second time.
+  by itself rather than merely starting out that way. Check [9] adds a sixth box,
+  so nothing after it may assume five. Check [10] runs last because it closes the
+  dashboard to test what closing the dashboard does — it owns the shutdown, and
+  `main()` must not quit the app a second time.
 - Checks that read pixels off tiles need the **overview** showing. Check [4] enters
   and leaves the detail view, so it puts the overview back before it returns.
 

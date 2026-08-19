@@ -45,7 +45,8 @@ read the fleet at a glance. Along the top is a count of how many windows are in
 each state, and a button that opens whichever one is waiting on you — tiles never
 reorder themselves, so the fleet always looks the same shape. Tiles show the whole
 browser window, so you will see its tab strip and address bar above the page
-itself.
+itself. The last cell of the grid is **+ Add box**, which starts another window
+there and then.
 
 Five states, and no others:
 
@@ -86,6 +87,9 @@ dashboard:
   window is ever out at once. You are not expected to need this often — the live
   view is a mirror, so it cannot be clicked into, and this is the way around
   that.
+- **"Close box"** shuts that window down for good: its browser, its agent
+  process and its conversation, none of which come back. There is no
+  confirmation, and the last remaining window cannot be closed.
 - **"Back"** returns to the overview.
 
 Nothing is broadcast to the windows: no clicks, no typing, no mouse positions,
@@ -117,6 +121,29 @@ them directly — that is what the tiles are for. They are still running normall
 while parked: a tile shows live page content whether its window is off-screen,
 covered by other windows, or in front of you.
 
+## Adding and removing windows while it runs
+
+**+ Add box** on the overview starts one more window: it launches, parks itself
+off the desktop, gets a tile, an agent process and its own conversation, and the
+grid reflows to fit. **Close box** in a window's own view is the opposite, and it
+is final — the browser closes and the conversation is gone.
+
+Two things to know about it:
+
+- **The dashboard stops responding for a second or two while Chromium starts.**
+  The launch happens on the same thread as the interface and there is nowhere
+  else to put it. The existing tiles keep updating throughout, because Windows
+  composites them; it is only the dashboard that pauses. A second click on the
+  tile during that pause is dropped rather than queued, so you get one window and
+  not two.
+- **Windows added this way are not saved.** `config.json` is untouched, and a
+  restart brings back exactly the list below — the same as the transcripts and
+  the browser profiles, which are also forgotten on exit.
+
+`max_boxes` in the config is the ceiling; the add tile says so when it is
+reached. If the dashboard window is too small to draw the tiles at a usable size,
+the overview says that instead of going blank — make the window bigger.
+
 ## Changing the number of windows or their names
 
 Edit `config.json`:
@@ -127,6 +154,7 @@ Edit `config.json`:
   "start_url": "about:blank",
   "window_size": [1440, 900],
   "window_layout": "hidden",
+  "max_boxes": 12,
   "dashboard": {
     "size": [1600, 1000],
     "columns": "auto",
@@ -146,6 +174,8 @@ Edit `config.json`:
   bigger than its source. So if you make the dashboard very large and the picture
   stops growing, raise `window_size`. Parked windows are off-screen, so a bigger
   number costs memory rather than desk space.
+- `max_boxes` — the most windows **+ Add box** will let you get to, including the
+  ones listed in `boxes`. There to stop a stuck finger opening thirty browsers.
 - `window_layout` — `hidden` (default) parks the windows off the desktop and out
   of the taskbar and Alt-Tab. Any other value puts them back on the desktop as
   ordinary staggered windows, which is there for when you need to look at what a
@@ -201,7 +231,7 @@ The thorough one needs real windows:
 .venv\Scripts\python.exe verify.py
 ```
 
-This launches the windows, builds the dashboard, and runs nine checks: each box
+This launches the windows, builds the dashboard, and runs ten checks: each box
 is a live Chromium process with its own window; summoning a window puts it on
 screen and in the foreground within 5 seconds and parking it takes it back off
 every monitor; every box has its own live tile; the tile grid is laid out sanely
@@ -209,8 +239,10 @@ and double-clicking tile *i* opens box *i*; the tiles show current page content
 (proven by flipping every page from red to blue and reading the pixels back off
 the screen, while every window is parked off-screen); a full dashboard refresh
 stays under its time budget; the tiles are still whole after the dashboard is
-maximised; a parked window has no taskbar button and no Alt-Tab entry; and
-closing the dashboard takes every agent process with it. It prints PASS or FAIL
+maximised; a parked window has no taskbar button and no Alt-Tab entry; a window
+added while the app is running is a real one, with its own processes and its own
+window rather than someone else's; and closing the dashboard takes every agent
+process with it. It prints PASS or FAIL
 for each, then closes everything. Pass a URL as an argument
 to point the windows at it instead of the built-in local test page.
 

@@ -25,6 +25,7 @@ class OverviewView:
         self.app = app
         self.tiles = []
         self.offset = (0, 0)
+        self._launching = False
 
         self.font = app.fonts["small"]
         self.label_h = self.font.metrics("linespace") + LABEL_PAD
@@ -54,6 +55,7 @@ class OverviewView:
         self.canvas.pack(side="top", fill="both", expand=True, padx=PAD, pady=(0, PAD))
         self.canvas.bind("<Configure>", lambda _e: self.relayout())
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
+        self.canvas.bind("<Button-1>", self.on_click)
 
     # -- view protocol ------------------------------------------------------
 
@@ -65,10 +67,13 @@ class OverviewView:
 
     def relayout(self):
         self.offset = self.app.client_offset(self.canvas)
+        # One cell past the fleet: the last tile is "+ Add box", laid out with
+        # the others so the grid stays one shape rather than a grid plus a
+        # button stuck somewhere.
         self.tiles = layout.tile_rects(
             self.canvas.winfo_width(),
             self.canvas.winfo_height(),
-            len(self.app.manager.boxes),
+            len(self.app.manager.boxes) + 1,
             aspect=self.app.aspect(),
             columns=self.app.dash.get("columns", "auto"),
             gap=self.app.dash.get("gap", 10),
@@ -113,7 +118,12 @@ class OverviewView:
         dx, dy = self.offset
         self._draw_header()
         self.canvas.delete("all")
-        for tile, box in zip(self.tiles, self.app.manager.boxes):
+        boxes = self.app.manager.boxes
+        if not self.tiles:
+            self._draw_too_small(len(boxes))
+            return
+        self._draw_add_tile(self.tiles[-1])
+        for tile, box in zip(self.tiles, boxes):
             state = self.app.sessions[box.name].state
             rect = (
                 tile.thumb.left + dx, tile.thumb.top + dy,
@@ -157,6 +167,37 @@ class OverviewView:
             fill=theme.MUTED, font=self.font,
         )
 
+    def _draw_add_tile(self, tile):
+        """The last cell: a way to get one more box.
+
+        Dashed, and captionless, so it never reads as a window that failed to
+        appear.
+        """
+        if self._launching:
+            text, colour = "launching…", theme.MUTED
+        elif self.app.can_add():
+            text, colour = "+   Add box", theme.MUTED
+        else:
+            text, colour = f"limit reached ({self.app.manager.max_boxes})", theme.DIM
+        self.canvas.create_rectangle(
+            *tile.thumb, outline=theme.EDGE, dash=(4, 4)
+        )
+        self.canvas.create_text(
+            (tile.thumb.left + tile.thumb.right) // 2,
+            (tile.thumb.top + tile.thumb.bottom) // 2,
+            text=text, fill=colour, font=self.app.fonts["body"],
+        )
+
+    def _draw_too_small(self, count):
+        """`tile_rects` gives up rather than drawing tiles too small to see. Say
+        so, or the overview is just blank and nobody knows why."""
+        self.canvas.create_text(
+            self.canvas.winfo_width() // 2, self.canvas.winfo_height() // 2,
+            text=f"{count} boxes will not fit in a window this size —\n"
+                 "make the dashboard bigger",
+            fill=theme.MUTED, font=self.app.fonts["body"], justify="center",
+        )
+
     def _draw_empty(self, tile):
         self.canvas.create_rectangle(
             *tile.thumb, outline=theme.EMPTY_EDGE, fill=theme.EMPTY_BG
@@ -168,7 +209,11 @@ class OverviewView:
         )
 
     def tile_screen_rects(self):
-        """Thumb rects in screen coordinates -- used by verify.py to sample pixels."""
+        """Thumb rects in screen coordinates -- used by verify.py to sample pixels.
+
+        Box tiles only: the add tile is the app's own drawing, and sampling it
+        would be sampling ourselves.
+        """
         return [
             (
                 self.canvas.winfo_rootx() + tile.thumb.left,
@@ -176,13 +221,37 @@ class OverviewView:
                 tile.thumb.right - tile.thumb.left,
                 tile.thumb.bottom - tile.thumb.top,
             )
-            for tile in self.tiles
+            for tile in self.tiles[:len(self.app.manager.boxes)]
         ]
 
     # -- actions ------------------------------------------------------------
 
     def on_double_click(self, event):
         index = layout.hit_test(self.tiles, event.x, event.y)
-        if index is None:
-            return
+        if index is None or index >= len(self.app.manager.boxes):
+            return  # the add tile is a button; one click is enough
         self.app.enter_detail(self.app.manager.boxes[index])
+
+    def on_click(self, event):
+        index = layout.hit_test(self.tiles, event.x, event.y)
+        if index is None or index < len(self.app.manager.boxes):
+            return  # a single click on a box does nothing; double-click opens it
+        self.add_box()
+
+    def add_box(self):
+        """Launch one more box, having first said that it is happening.
+
+        The launch owns this thread for a second or two, so the "launching…"
+        frame has to be painted and flushed *before* the call. Painted after, the
+        only frame anyone sees is the one where it is already over.
+        """
+        if self.app.adding or not self.app.can_add():
+            return
+        self._launching = True
+        self.draw()
+        self.canvas.update_idletasks()
+        try:
+            self.app.add_box()
+        finally:
+            self._launching = False
+        self.relayout()
