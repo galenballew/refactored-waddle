@@ -7,13 +7,13 @@ what the window manager already did.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
-answer it when it needs you, and see at a glance which of the five is working,
+answer it when it needs you, and see at a glance which of them is working,
 stuck, or done. The browser windows stay parked exactly as they are — the agent
 drives its box over CDP, which needs no focus and no visible window, so the
 existing park/summon model survives untouched.
 
-Mocks are expected and fine at every stage. No model call happens until M6, and
-stopping at M5 with a fleet of scripted agents is a legitimate outcome.
+Mocks are expected and fine at every stage. No model call happens until M7, and
+stopping at M6 with a fleet of scripted agents is a legitimate outcome.
 
 ## Decisions already made
 
@@ -30,6 +30,7 @@ stopping at M5 with a fleet of scripted agents is a legitimate outcome.
 | Persistence | In memory only, like the browser profiles. Nothing on disk |
 | Verification | Repair `verify.py` where this work breaks it. No new checks while the shape is still moving |
 | Sizing | Boxes launch at 1440x900, dashboard opens at 1600x1000 |
+| Fleet size | Fixed by `config.json` for now. A **+ Add box** on the overview lands in M5, so nothing may start assuming the count is constant |
 
 Two of these are worth their reasoning:
 
@@ -38,9 +39,9 @@ proves them. Demoting the feature does not mean deleting the machinery — the
 detail view gets a small "Take control" button, and only *tile-click-to-summon*
 goes away. Removing working, verified code to save nothing would be a bad trade.
 
-**The subprocess boundary arrives at M3, not M1 and not M6.** M1 and M2 fake
+**The subprocess boundary arrives at M3, not M1 and not M7.** M1 and M2 fake
 everything in-process, because the fastest way to settle a UI is to build the UI.
-From M3 on, every milestone works against the real boundary, so M6 changes one
+From M3 on, every milestone works against the real boundary, so M7 changes one
 process's insides and nothing else. Building all the mock milestones in-process
 and splitting at the end would mean rewriting the interface at the exact moment
 the real agent is also new.
@@ -92,14 +93,56 @@ cancel/stop on a running task, attention routing so the overview tells you *whic
 box is waiting on you rather than making you check five of them, trajectory
 scrollback, and the "Take control" button if it has not already landed.
 
-### M5 — Real perception and action, still no model
+### M5 — Growing the fleet: add a box at runtime
+
+A **+ Add box** tile at the end of the overview grid. Pressing it launches one
+more Chromium, parks it, registers its thumbnail, gives it a session and a driver
+process, and reflows the grid. `config.json` stops being the only thing that
+decides how many boxes exist.
+
+It lands here because by the end of M4 a box is a complete thing — window,
+session, subprocess — so "add one" has a single obvious meaning. Before M3 it
+would be adding plumbing that M3 rewrites; after M6 it would mean threading a CDP
+port through a code path that is already new.
+
+Four things to get right, and they are all in the launch:
+
+- **PID attribution is the thing most likely to break.** `BoxManager.start`
+  snapshots `chrome.exe` PIDs around each launch and attributes the new ones to
+  that box; CLAUDE.md already warns this holds only because launches are
+  serialized. A runtime add is still serialized *if nothing else can launch while
+  it runs* — so the button must disable itself for the duration and a second
+  click must be dropped, not queued.
+- **The launch blocks the UI for a second or two.** Playwright's sync API on the
+  Tk thread, which is architectural and not being changed. The existing tiles stay
+  live throughout, because DWM composites them out-of-process — only the dashboard
+  itself stops responding. Put the tile into a "launching…" state and let Tk paint
+  one frame before making the call, or it looks like a freeze.
+- **The grid has a floor.** `tile_rects` returns nothing once tiles would fall
+  below `MIN_TILE`, so past some count the overview goes blank rather than
+  degrading. Whatever the answer is — a scroll, a cap, a smaller minimum — it has
+  to be decided here rather than discovered by the person who adds the tenth box.
+- **Naming.** Auto-name from the highest existing index rather than from the
+  count, so names stay unique after a box is removed.
+
+Two decisions to make when it is built, not now:
+
+- **Does removing a box land in the same milestone?** It is cheap once add works —
+  close the browser, unregister the thumbnail, kill the child, drop the session —
+  but it is also the first way to lose a transcript, so it is a decision rather
+  than a freebie.
+- **Does an added box persist to `config.json`?** Default no: transcripts and
+  profiles are already in-memory-only, and a restart returning to the configured
+  fleet is consistent with that.
+
+### M6 — Real perception and action, still no model
 
 Each child connects to its own box's Chromium over CDP, takes `page.screenshot()`,
 and runs a hardcoded scripted browse: real clicks, real pages, real trajectory
 entries, real results in chat. Zero AI.
 
 This is the best place to stop if the prototype turns out to be good enough as a
-prototype. What you have at the end of M5 is a working multi-agent console whose
+prototype. What you have at the end of M6 is a working multi-agent console whose
 agents happen to be scripts, and the only thing missing is the part that decides
 what to do next.
 
@@ -109,7 +152,7 @@ Chromium supports this, but this app has never done it, and box launch is also
 where PID attribution happens — the raciest thing in the codebase. Change launch
 carefully.
 
-### M6 — Swap in the model
+### M7 — Swap in the model
 
 Replace the scripted driver inside the child with a Claude Agent SDK loop: API key
 handling, streaming turns into the transcript, cost. If M3 was done right, nothing

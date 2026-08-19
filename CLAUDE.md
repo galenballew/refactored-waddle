@@ -134,7 +134,9 @@ with a correctness constraint worth testing.
 - **Ephemeral profiles.** No persistent user-data-dir, no isolation guarantees, no
   cross-box checks. Do not describe this as a security boundary.
 - **Config drives box count and names.** `len(config["boxes"])` is the window count;
-  nothing hardcodes 5.
+  nothing hardcodes 5. Keep it that way, and do not let anything cache the count
+  either: adding a box at runtime from the overview is planned (PLAN.md, M5), so
+  the fleet is about to stop being constant as well as unhardcoded.
 
 ## DWM thumbnail rules
 
