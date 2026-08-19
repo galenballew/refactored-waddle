@@ -60,8 +60,7 @@ class App:
         # separate process, reached only by sending a line and draining a pipe,
         # is real and is the point.
         self.agents = {
-            box.name: Agent(self.sessions[box.name], getattr(box, "cdp", None))
-            for box in manager.boxes
+            box.name: self._spawn(box) for box in manager.boxes
         }
 
         self.root = tk.Tk()
@@ -171,6 +170,12 @@ class App:
 
     # -- driving the boxes --------------------------------------------------
 
+    def _spawn(self, box):
+        """One child for one box. `agent` in the config decides what runs inside
+        it -- a script, or a model that costs money per task."""
+        return Agent(self.sessions[box.name], getattr(box, "cdp", None),
+                     self.config.get("agent", "script"))
+
     def send(self, box, text):
         self.agents[box.name].send(text)
 
@@ -208,8 +213,7 @@ class App:
         if box is None:
             return None
         self.sessions[box.name] = Session(box.name)
-        self.agents[box.name] = Agent(self.sessions[box.name],
-                                      getattr(box, "cdp", None))
+        self.agents[box.name] = self._spawn(box)
         self._register(box)
         self.overview.relayout()
         return box

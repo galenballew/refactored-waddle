@@ -31,6 +31,7 @@ DEFAULTS = {
     "window_size": [1440, 900],
     "window_layout": "hidden",
     "max_boxes": 12,
+    "agent": "script",
     "dashboard": {"size": [1600, 1000], "columns": "auto", "gap": 10,
                   "refresh_ms": 1000},
 }

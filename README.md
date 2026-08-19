@@ -8,19 +8,22 @@ it.
 
 Each window has its own agent process, which drives that window's browser over
 the DevTools protocol: it opens pages, reads them, takes screenshots and clicks
-links. What it does next is decided by a fixed script rather than by a model —
-there is no AI anywhere in this program. `PLAN.md` has the milestones.
+links. Out of the box a fixed script decides what to do next and nothing calls a
+model. Set `"agent": "claude"` in the config and Claude decides instead — that is
+the only path that costs money, and it is off until you turn it on.
 
 ## What you need
 
 - Python 3.9 or newer. Only 3.12 has actually been run; nothing in the code
   needs anything newer than 3.8, but the other versions are untested.
 - Playwright, plus its Chromium build
+- The `anthropic` package, only if you want Claude driving the windows
 
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install playwright
 .venv\Scripts\python.exe -m playwright install chromium
+.venv\Scripts\python.exe -m pip install anthropic      # only for "agent": "claude"
 ```
 
 Windows only. The live tiles and the window focusing both use Windows APIs
@@ -123,6 +126,33 @@ What it does is real: the window really navigates, and you can watch it happen i
 the tile. What it *decides* is not intelligence, and the results it reports are
 only ever what a fixed script found.
 
+## Letting Claude drive instead
+
+Set `"agent": "claude"` in `config.json` and every window gets a real Claude loop
+in place of the script. **This spends money on your Anthropic account, once per
+task**, so it is off until you ask for it.
+
+You need credentials — either `ANTHROPIC_API_KEY` in the environment, or a
+profile from `ant auth login` — and the `anthropic` package installed. Without
+them a window will tell you so in its chat and end up `failed`; nothing else
+breaks.
+
+What changes: the window still opens pages, reads them, screenshots them and
+clicks things, but Claude chooses which, in what order, and when it has enough to
+answer. It can also stop and ask you a question of its own — that is the same
+`needs input` state, and your reply goes straight back to it.
+
+Two limits worth knowing:
+
+- **Twelve model turns per task.** After that the window gives up and says so. A
+  loop that will not converge is a bill, not a feature.
+- **Every task reports what it cost** as the last line of its trajectory — how
+  many turns, and the input and output tokens. Model is Claude Opus 5 unless you
+  set `MULTIBOX_MODEL`.
+
+Cancel still works, but only between turns: **Stop** cannot interrupt a model
+call that is already in flight, so it takes effect when the current turn returns.
+
 The browser windows are deliberately not on your desktop. You do not need to see
 them directly — that is what the tiles are for. They are still running normally
 while parked: a tile shows live page content whether its window is off-screen,
@@ -162,6 +192,7 @@ Edit `config.json`:
   "window_size": [1440, 900],
   "window_layout": "hidden",
   "max_boxes": 12,
+  "agent": "script",
   "dashboard": {
     "size": [1600, 1000],
     "columns": "auto",
@@ -183,6 +214,8 @@ Edit `config.json`:
   number costs memory rather than desk space.
 - `max_boxes` — the most windows **+ Add box** will let you get to, including the
   ones listed in `boxes`. There to stop a stuck finger opening thirty browsers.
+- `agent` — `script` (default) runs the fixed sequence described above and costs
+  nothing. `claude` puts a real model behind every window; see below.
 - `window_layout` — `hidden` (default) parks the windows off the desktop and out
   of the taskbar and Alt-Tab. Any other value puts them back on the desktop as
   ordinary staggered windows, which is there for when you need to look at what a
@@ -272,10 +305,10 @@ Deliberately left out. These are not missing features, they are decisions:
 - No login handling, credential storage, containers, or remote execution.
 - No charts, progress bars, or metrics.
 
-There is **no AI or model call anywhere in this codebase**, and no agent loop.
-The agents drive real browsers, but every decision they make comes from the fixed
-script described above. `PLAN.md` describes how a real one is meant to get there,
-and what would have to change: one file.
+A model call is now possible but not automatic: with the default `"agent":
+"script"` nothing in this program contacts Anthropic, and every decision comes
+from the fixed script described above. `"agent": "claude"` is the opt-in, and it
+is the only thing here that costs money.
 
 Also worth knowing: profiles are temporary and thrown away when the app closes.
 The windows are separate browser launches, which keeps their cookies and storage

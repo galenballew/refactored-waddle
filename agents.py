@@ -36,9 +36,10 @@ class Agent:
     """One box's driver. Same two calls the in-process fake had: send, and a
     change notification -- here as the return value of `pump`."""
 
-    def __init__(self, session, cdp=None):
+    def __init__(self, session, cdp=None, kind="script"):
         self.session = session
         self.cdp = cdp
+        self.kind = kind
         self.proc = None
         self.reader = None
         self.start()
@@ -49,6 +50,8 @@ class Agent:
         command = [sys.executable, "-u", str(HOST), self.session.name]
         if self.cdp:
             command += ["--cdp", self.cdp]
+        if self.kind:
+            command += ["--agent", self.kind]
         # stderr is left inherited on purpose: a traceback in a child belongs in
         # the console the dashboard was started from, not swallowed.
         self.proc = subprocess.Popen(

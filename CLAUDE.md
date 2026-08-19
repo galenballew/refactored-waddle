@@ -13,9 +13,10 @@ The dashboard has two views: an **overview** of every box as a live tile, and a
 and a trajectory panel beside it. Those two panels are where an agent will
 eventually live. What is behind them today is `agent_host.py`, one child process
 per box, driving that box's browser over CDP: it opens pages, screenshots them,
-reads them and clicks links, and everything it reports really happened. What it
-does next comes from a fixed script — there is still no model call anywhere. See
-`PLAN.md` for the milestones and the decisions behind them.
+reads them and clicks links, and everything it reports really happened. Which of
+those it does is decided by a fixed script by default, or by Claude when
+`config["agent"] == "claude"` — the only path that calls a model, and the only
+one that costs money. See `PLAN.md` for the milestones and the reasoning.
 
 The dashboard is the **only window the user ever sees**. The boxes are *parked* —
 positioned clear of every monitor and dropped from the taskbar and Alt-Tab — and a
@@ -55,9 +56,10 @@ session.py    per-box state, transcript and trajectory. The model the UI renders
               it decides nothing. In memory, dies with the process
 agents.py     the dashboard's half of the agent boundary: spawn a child per box,
               send it a line, drain what comes back into the session
-agent_host.py the child, one process per box: drives its box's browser over CDP,
-              following a fixed script. No model anywhere. M7 replaces its
-              BrowserAgent with a real loop; the stand-in beside it is for tests
+agent_host.py the child, one process per box. Three agents share one state
+              machine: ModelAgent (a Claude tool loop — the only model call in
+              the repo), BrowserAgent (the same browser, fixed script) and
+              StandInAgent (no browser at all, for the fast checks)
 pipes.py      ctypes/kernel32: reading a pipe without blocking, and telling an
               empty one from a broken one. Used by both ends
 ui/           only package that touches Tkinter
@@ -123,6 +125,13 @@ with a correctness constraint worth testing.
   while `page.evaluate("location.href")` gives the truth. Captions therefore use
   `session.url`, which the child reports, not `box.page.url`. Do not "fix" this by
   evaluating on the Tk thread once per tick per box.
+- **The model loop lives behind the same seam as everything else.** `ModelAgent`
+  is one queued action per model turn, so cancel is noticed between turns — never
+  during one, because a model call blocks that process for as long as it takes.
+  It appends `response.content` unchanged (thinking blocks have to go back
+  exactly as they came), answers every `tool_use` in a turn in a single user
+  message (which is why `ask_user` parks the other results until the user
+  replies), and stops at `MAX_TURNS`: a loop that will not converge is a bill.
 - **A child drops input while it is working, and the UI must not pretend
   otherwise.** The detail view disables the input and the Send button while a box
   is working, and offers Stop instead. Do not add a queue in the child to "fix"
@@ -278,12 +287,13 @@ Deliberately out of scope. Do not add these even if they seem useful:
 - Charts, progress bars, or metrics. The trajectory panel is a list of what one
   agent did, not a dashboard about the dashboard.
 
-Agents themselves are no longer on this list. Per-box agents are the plan of record
-— see `PLAN.md` — but nothing is connected yet: there is still **no AI or model call
-anywhere in this codebase**, and no agent loop. Do not add one ahead of the
-milestone that calls for it, and do not make `agent_host.py`'s script cleverer —
-finding a URL and clicking the first link is meant to be dumb. If it needs to
-decide anything, the answer is M7, not a better script.
+There **is** a model call now, in exactly one place: `ModelAgent` in
+`agent_host.py`, reached only when `config["agent"] == "claude"`. Keep it that
+way. Nothing else in this repo may call a model, and the default must stay
+`script` — a dashboard that starts spending money because someone launched it is
+not a dashboard anyone should trust. `BrowserAgent`'s script is deliberately dumb
+(find a URL, click the first link); if it needs to decide something, that is what
+`ModelAgent` is for, not a cleverer script.
 
 Two things to protect on the way there: DWM never returns pixels to Python, so agent
 perception needs a separate `page.screenshot()` path; and the eventual shape is one

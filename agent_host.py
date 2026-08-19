@@ -39,6 +39,7 @@ exists to prove.
 MULTIBOX_STEP_MS paces the stand-in only. Real work takes as long as it takes.
 """
 
+import base64
 import json
 import os
 import re
@@ -321,6 +322,259 @@ class BrowserAgent(Agent):
             self._playwright = None
 
 
+MODEL = os.environ.get("MULTIBOX_MODEL", "claude-opus-5")
+MAX_TURNS = 12          # a runaway loop is a runaway bill
+MAX_OUTPUT_TOKENS = 8000
+PAGE_TEXT_CHARS = 4000
+SHOT_QUALITY = 60       # JPEG: a page screenshot is sent to the model every time
+
+SYSTEM = """You are driving one Chromium window on someone's desktop. It is called
+{name}, and it is one of several windows they are watching side by side.
+
+You have one page and it is the one they can see. Do not open tabs or windows.
+Work on the page you have.
+
+Use the tools to look before you act: read_page tells you the text and the links,
+screenshot shows you what it looks like. Prefer read_page when you need facts and
+screenshot when the layout matters.
+
+If the task is ambiguous, or you need something only they know, call ask_user and
+stop. Do not guess at a URL they did not give you.
+
+When you are finished, reply with a short plain answer -- one or two sentences,
+what they asked for, no preamble. They are watching several of these at once."""
+
+TOOLS = [
+    {
+        "name": "goto",
+        "description": "Navigate this window to a URL.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"url": {"type": "string", "description": "Full URL."}},
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "read_page",
+        "description": "Read the current page: title, address, visible text, links.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "click",
+        "description": "Click a link or button by its visible text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "Visible text."}},
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "screenshot",
+        "description": "Look at the page as an image.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ask_user",
+        "description": ("Stop and ask the person a question. Use when the task is "
+                        "ambiguous or needs something only they know."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"question": {"type": "string"}},
+            "required": ["question"],
+        },
+    },
+]
+
+
+class ModelAgent(BrowserAgent):
+    """A Claude loop with a browser on the end of it. The only thinking in here.
+
+    One queued action is one model turn, which keeps the shape the rest of this
+    file has: the loop can notice a cancel between turns. It cannot notice one
+    *during* a turn -- a model call blocks this process for as long as it takes,
+    and there is nothing useful to do about that here.
+
+    The conversation is kept whole, `response.content` appended unchanged, because
+    thinking blocks have to go back exactly as they came.
+    """
+
+    def __init__(self, name, endpoint):
+        super().__init__(name, endpoint)
+        self._client = None
+        self.messages = []
+        self.turns = 0
+        self.spent = [0, 0]        # input, output tokens this task
+        self._pending_ask = None   # tool_use id waiting on the user
+        self._pending_results = []
+
+    # -- the loop -----------------------------------------------------------
+
+    def start(self, prompt):
+        self.messages = [{"role": "user", "content": prompt}]
+        self.turns = 0
+        self.spent = [0, 0]
+        self.run([self._turn])
+
+    def resume(self, answer):
+        """The user answered. If a tool asked the question, the answer is that
+        tool's result -- every tool call in a turn has to be answered together,
+        so the others have been waiting here for it."""
+        if self._pending_ask is not None:
+            self._pending_results.append({
+                "type": "tool_result",
+                "tool_use_id": self._pending_ask,
+                "content": answer,
+            })
+            self.messages.append({"role": "user", "content": self._pending_results})
+            self._pending_ask = None
+            self._pending_results = []
+        else:
+            self.messages.append({"role": "user", "content": answer})
+        self.run([self._turn])
+
+    def _client_or_fail(self):
+        if self._client is not None:
+            return self._client
+        try:
+            import anthropic
+        except ImportError:
+            raise RuntimeError(
+                "the anthropic package is not installed in this environment"
+            )
+        # Zero-arg: picks up ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or a
+        # profile from `ant auth login`.
+        client = anthropic.Anthropic()
+        if not (client.api_key or client.auth_token):
+            raise RuntimeError(
+                "no API credentials — set ANTHROPIC_API_KEY, or run `ant auth login`, "
+                "or set \"agent\": \"script\" in config.json to run without a model"
+            )
+        self._client = client
+        return self._client
+
+    def _turn(self):
+        self.turns += 1
+        if self.turns > MAX_TURNS:
+            self.set_state(FAILED)
+            self.say(f"I stopped after {MAX_TURNS} steps without finishing.")
+            return
+
+        client = self._client_or_fail()
+        self._connect()  # so the first tool call is not also the first connection
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            system=SYSTEM.format(name=self.name),
+            tools=TOOLS,
+            thinking={"type": "adaptive"},
+            messages=self.messages,
+        )
+        self.spent[0] += response.usage.input_tokens
+        self.spent[1] += response.usage.output_tokens
+        self.messages.append({"role": "assistant", "content": response.content})
+
+        for block in response.content:
+            if block.type == "text" and block.text.strip():
+                self.say(block.text.strip())
+
+        calls = [block for block in response.content if block.type == "tool_use"]
+        if not calls:
+            self._report_cost()
+            self.set_state(DONE)
+            return
+
+        results = []
+        for call in calls:
+            if call.name == "ask_user":
+                question = (call.input or {}).get("question", "").strip()
+                self._pending_ask = call.id
+                self._pending_results = results
+                self.step("asked you a question")
+                self.set_state(NEEDS_INPUT)
+                self.say(question or "I need something from you to carry on.")
+                return
+            results.append(self._use(call))
+
+        self.messages.append({"role": "user", "content": results})
+        self.queue.append(self._turn)
+
+    def _report_cost(self):
+        self.step(f"{self.turns} model turns, "
+                  f"{self.spent[0]:,} in / {self.spent[1]:,} out tokens")
+
+    # -- the tools ----------------------------------------------------------
+
+    def _use(self, call):
+        """Run one tool. A failure is a result, not the end of the task: the
+        model can read the error and try something else."""
+        try:
+            content = self._dispatch(call.name, call.input or {})
+            return {"type": "tool_result", "tool_use_id": call.id, "content": content}
+        except Exception as exc:
+            detail = str(exc).strip().splitlines()[0][:200] or exc.__class__.__name__
+            self.step(f"{call.name} failed: {detail}")
+            return {
+                "type": "tool_result",
+                "tool_use_id": call.id,
+                "content": f"Error: {detail}",
+                "is_error": True,
+            }
+
+    def _dispatch(self, name, args):
+        page = self._connect()
+        if name == "goto":
+            url = args.get("url", "")
+            self._goto(url)
+            return f"Now at {page.url}, titled {page.title()!r}."
+        if name == "read_page":
+            return self._read(page)
+        if name == "click":
+            return self._click(page, args.get("text", ""))
+        if name == "screenshot":
+            return self._look(page)
+        return f"Error: there is no tool called {name}."
+
+    def _read(self, page):
+        self.step("read the page")
+        text = (page.inner_text("body") or "").strip()
+        clipped = text[:PAGE_TEXT_CHARS]
+        links = page.eval_on_selector_all(
+            "a[href]",
+            "els => els.slice(0, 40).map(e => (e.innerText || '').trim() "
+            "+ ' -> ' + e.href).filter(s => s.length > 4)",
+        )
+        more = "" if len(text) <= PAGE_TEXT_CHARS else "\n[text truncated]"
+        return (f"Title: {page.title()}\nURL: {page.url}\n\n{clipped}{more}\n\n"
+                f"Links:\n" + "\n".join(links))
+
+    def _click(self, page, text):
+        if not text:
+            return "Error: click needs the visible text of something to click."
+        self.step(f'clicked "{text}"')
+        before = page.url
+        page.get_by_text(text, exact=False).first.click(timeout=CLICK_TIMEOUT_MS)
+        page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        if page.url != before:
+            self.report_url()
+            return f"Clicked. The page went to {page.url}, titled {page.title()!r}."
+        return f"Clicked. Still on {page.url}, titled {page.title()!r}."
+
+    def _look(self, page):
+        """A screenshot, as an image the model can actually see. This is the
+        perception path the dashboard's tiles cannot provide: DWM composites
+        those on the GPU and never hands Python a pixel."""
+        data = page.screenshot(type="jpeg", quality=SHOT_QUALITY)
+        self.step(f"screenshot, {len(data) // 1024} KB")
+        return [{
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": base64.standard_b64encode(data).decode("ascii"),
+            },
+        }]
+
+
 class StandInAgent(Agent):
     """No browser to drive, so it makes everything up on a timer.
 
@@ -377,14 +631,25 @@ class StandInAgent(Agent):
         self.say(text)
 
 
-def build(argv):
-    name = argv[1] if len(argv) > 1 else "box"
-    endpoint = None
-    if "--cdp" in argv:
-        index = argv.index("--cdp")
+def _option(argv, flag):
+    if flag in argv:
+        index = argv.index(flag)
         if index + 1 < len(argv):
-            endpoint = argv[index + 1]
-    return BrowserAgent(name, endpoint) if endpoint else StandInAgent(name)
+            return argv[index + 1]
+    return None
+
+
+def build(argv):
+    """Pick the agent: a model if asked for and there is a browser to drive, the
+    script if not, and the stand-in when there is no browser at all."""
+    name = argv[1] if len(argv) > 1 else "box"
+    endpoint = _option(argv, "--cdp")
+    kind = _option(argv, "--agent") or "script"
+    if not endpoint:
+        return StandInAgent(name)
+    if kind == "claude":
+        return ModelAgent(name, endpoint)
+    return BrowserAgent(name, endpoint)
 
 
 def main():

@@ -15,14 +15,18 @@ The children are told to run their script fast (MULTIBOX_STEP_MS), or watching a
 stand-in pretend to work would take half a minute.
 """
 
+import io
+import json
 import os
 import sys
 import time
 import types
+from contextlib import redirect_stdout
 
 STEP_MS = 40
 os.environ["MULTIBOX_STEP_MS"] = str(STEP_MS)  # before any child is spawned
 
+import agent_host  # noqa: E402
 import layout  # noqa: E402
 import session as model  # noqa: E402
 import thumbs  # noqa: E402
@@ -383,8 +387,155 @@ def check_shutdown(app):
     return ok
 
 
+class _Recorder:
+    """A stand-in for the Anthropic client: hands back a scripted reply and keeps
+    what it was asked. No API call, no key, no money."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.script:
+            return self.script.pop(0)
+        return _reply([_text("done then.")], "end_turn")
+
+
+class _FakePage:
+    def __init__(self):
+        self.url = "about:blank"
+        self.went_to = []
+
+    def goto(self, url, **_kwargs):
+        self.went_to.append(url)
+        self.url = url
+
+    def title(self):
+        return "Example"
+
+    def inner_text(self, _selector):
+        return "Everything, boxed."
+
+    def eval_on_selector_all(self, _selector, _script):
+        return ["See pricing -> https://example.com/pricing"]
+
+    def wait_for_load_state(self, *_a, **_kw):
+        pass
+
+    def screenshot(self, **_kwargs):
+        return b"\xff\xd8\xff" + b"x" * 4096
+
+
+def _text(text):
+    return types.SimpleNamespace(type="text", text=text)
+
+
+def _call(name, args, id="tu"):
+    return types.SimpleNamespace(type="tool_use", name=name, input=args, id=id)
+
+
+def _reply(content, stop_reason="tool_use"):
+    return types.SimpleNamespace(
+        content=content, stop_reason=stop_reason,
+        usage=types.SimpleNamespace(input_tokens=1000, output_tokens=100),
+    )
+
+
+def _drive(agent, text):
+    """Run one exchange the way the child's loop would, capturing the protocol."""
+    out = io.StringIO()
+    with redirect_stdout(out):
+        agent.on_input(text)
+        for _ in range(40):
+            if not agent.queue:
+                break
+            agent.tick(time.monotonic())
+    return [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+
+
+def check_model_loop():
+    """The agent that thinks, with the thinking faked out.
+
+    Everything here except the model call itself is the real code path: the
+    turn loop, the tools, the pause for a question, the cost ceiling. Whether
+    Claude does anything sensible with them needs credentials and cannot be
+    checked from here.
+    """
+    print("\n[11] the model loop, with a fake model")
+
+    def build(script):
+        agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+        agent._client = _Recorder(script)
+        agent._page = _FakePage()  # so _connect() short-circuits
+        return agent
+
+    agent = build([
+        _reply([_text("having a look."), _call("goto", {"url": "https://example.com"})]),
+        _reply([_text("It is a shop.")], "end_turn"),
+    ])
+    lines = _drive(agent, "open example.com and tell me what it is")
+    kinds = lambda kind: [line for line in lines if line.get("type") == kind]
+    check("a task runs and finishes",
+          [line["value"] for line in kinds("state")] == ["working", "done"])
+    check("the page was really driven", agent._page.went_to == ["https://example.com"])
+    check("what it said reached the chat",
+          "It is a shop." in [line["text"] for line in kinds("say")])
+    check("what it did reached the trajectory",
+          any("goto" in line["text"] for line in kinds("step")))
+    check("it reports what the task cost",
+          any("tokens" in line["text"] for line in kinds("step")))
+    first = agent._client.calls[0]
+    check("opus 5, thinking on", first["model"] == "claude-opus-5"
+          and first["thinking"]["type"] == "adaptive", first["model"])
+
+    agent = build([
+        _reply([_call("read_page", {}, id="a"),
+                _call("ask_user", {"question": "which plan?"}, id="b")]),
+        _reply([_text("the Team plan.")], "end_turn"),
+    ])
+    lines = _drive(agent, "compare the plans")
+    check("ask_user stops the loop", agent.state == model.NEEDS_INPUT, agent.state)
+    check("the question is in the chat",
+          any("which plan?" in line["text"] for line in lines if line.get("type") == "say"))
+    _drive(agent, "the team one")
+    sent = agent._client.calls[-1]["messages"]
+    results = [b for m in sent if isinstance(m.get("content"), list)
+               for b in m["content"] if isinstance(b, dict) and b.get("type") == "tool_result"]
+    check("every tool call in that turn is answered together", len(results) == 2, len(results))
+    check("the user's words are the ask_user result",
+          any(r["tool_use_id"] == "b" and r["content"] == "the team one" for r in results))
+    check("then it finishes", agent.state == model.DONE, agent.state)
+
+    agent = build([_reply([_call("click", {}, id="c")]),
+                   _reply([_text("could not.")], "end_turn")])
+    _drive(agent, "click the thing")
+    check("a failing tool does not end the task", agent.state == model.DONE, agent.state)
+    check("the model is told what went wrong",
+          "Error" in str(agent._client.calls[-1]["messages"]))
+
+    agent = build([_reply([_call("screenshot", {}, id="d")]),
+                   _reply([_text("looks fine.")], "end_turn")])
+    _drive(agent, "look at it")
+    check("a screenshot goes to the model as an image",
+          "'image'" in str(agent._client.calls[-1]["messages"]))
+
+    agent = build([_reply([_call("read_page", {}, id=f"t{i}")])
+                   for i in range(agent_host.MAX_TURNS + 3)])
+    _drive(agent, "go forever")
+    check("a runaway loop is capped", agent.state == model.FAILED, agent.state)
+
+    agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+    agent._page = _FakePage()
+    lines = _drive(agent, "do something")
+    check("no credentials fails clearly, naming the fix",
+          agent.state == model.FAILED and any("ANTHROPIC_API_KEY" in line["text"]
+                                              for line in lines if line.get("type") == "say"))
+
+
 def check_geometry():
-    print("\n[11] geometry")
+    print("\n[12] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -411,6 +562,7 @@ def main():
         check_crash(app, manager)
         check_fleet(app, manager)
         check_shutdown(app)  # quits the app
+        check_model_loop()
         check_geometry()
     finally:
         for agent in app.agents.values():

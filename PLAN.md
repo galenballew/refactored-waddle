@@ -1,10 +1,14 @@
 # Plan: agents in the boxes
 
-Nearly built. **M1 through M6 have landed; only M7 has not.** Each box has an agent
-process that really drives its browser over CDP — opening pages, screenshotting
-them, reading them, clicking links — and you can task it, answer it, stop it, and
-add or close boxes while it runs. What is still missing is the only interesting
-part: nothing decides anything. There is no model call anywhere.
+Built. **M1 through M7 have landed.** Each box has an agent process that drives its
+browser over CDP — opening pages, screenshotting them, reading them, clicking
+links — and you can task it, answer it, stop it, and add or close boxes while it
+runs. With `"agent": "claude"` the deciding is done by a model; with the default
+`"script"` nothing contacts Anthropic at all.
+
+One thing is outstanding: the model path has never been run against a live key,
+because this machine has no credentials. See M7 for exactly what that leaves
+unproven.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -13,9 +17,9 @@ stuck, or done. The browser windows stay parked exactly as they are — the agen
 drives its box over CDP, which needs no focus and no visible window, so the
 existing park/summon model survives untouched.
 
-Mocks are expected and fine at every stage. No model call happens until M7, and
-stopping here — a fleet of real browsers driven by scripts — is a legitimate
-outcome.
+Mocks were expected and fine at every stage, and the script path remains a
+first-class way to run this: a fleet of real browsers driven by scripts, with no
+model anywhere near it.
 
 ## Decisions already made
 
@@ -28,7 +32,7 @@ outcome.
 | Broadcast bar | Removed. The URL box and Send-to-all/Reload-all go away |
 | Taking control | A nice-to-have, not a core path. Chat is the interface; you should never *have* to drive a box by hand |
 | Agent boundary | One subprocess per box, line-delimited JSON over stdio |
-| Real agent, eventually | Claude Agent SDK, driving its own box over CDP |
+| Real agent | Landed at M7 as a Claude tool-use loop over the Messages API, driving its box over CDP. *Not* the Claude Agent SDK — that is Claude Code as a library, built for files and bash, not for a browser |
 | Persistence | In memory only, like the browser profiles. Nothing on disk |
 | Verification | Repair `verify.py` where this work breaks it, rather than growing it. Since M3 there is also `smoke.py`: browserless, one second, safe to run mid-edit |
 | Sizing | Boxes launch at 1440x900, dashboard opens at 1600x1000 |
@@ -212,7 +216,41 @@ Chromium supports this, but this app has never done it, and box launch is also
 where PID attribution happens — the raciest thing in the codebase. Change launch
 carefully.
 
-### M7 — Swap in the model
+### M7 — Swap in the model — DONE (not yet run against a live key)
+
+Landed as `ModelAgent` in `agent_host.py`, reached with `"agent": "claude"` in the
+config. The boundary held: nothing outside that file changed except plumbing one
+config value through to the child's argv.
+
+**Deviation from the plan: the Claude Agent SDK is the wrong tool here.** That SDK
+is Claude Code packaged as a library — its built-in tools are file read/write,
+bash and grep, aimed at a coding agent on your own filesystem. This agent needs to
+drive a browser, so it uses the Claude API's tool-use loop with five tools of its
+own: `goto`, `read_page`, `click`, `screenshot` and `ask_user`. Manual loop rather
+than the SDK's tool runner, because this agent has to *pause mid-loop* — when it
+asks the user something, the loop stops until they answer, and the runner has no
+seam for that.
+
+`ask_user` is the neat part: the question becomes a `needs input` state, and the
+user's reply comes back as that tool call's result, so the conversation continues
+rather than restarting. Every tool call in a turn has to be answered in one
+message, so the other results wait with it.
+
+**Off by default, and it stays that way.** `"agent": "script"` means nothing
+contacts Anthropic. A dashboard that starts spending money because someone
+launched it is not one anyone should trust. Two guards on the opt-in path: twelve
+model turns per task, and every task reports what it cost as its last trajectory
+line.
+
+**What is unverified:** the live call. This machine has no `ANTHROPIC_API_KEY`, no
+`ant` profile, and no `ant` CLI, so the loop has never spoken to Anthropic. What
+*is* verified is everything around it — `smoke.py` [11] drives the real loop with
+a fake client: tool dispatch, the ask-and-resume round trip, an erroring tool not
+killing the task, screenshots going up as image blocks, the turn cap, and a clean
+failure naming the fix when there are no credentials. First run with a real key is
+the outstanding work.
+
+The original plan follows.
 
 Replace the scripted driver inside the child with a Claude Agent SDK loop: API key
 handling, streaming turns into the transcript, cost. If M3 was done right, nothing
