@@ -236,7 +236,7 @@ def focus_window(hwnd):
     """Raise `hwnd` and make it the foreground window. Returns True if Windows agreed.
 
     Windows only lets the current foreground process hand off focus. When a row is
-    clicked the control window *is* foreground, so this normally just works; the
+    clicked the dashboard *is* foreground, so this normally just works; the
     AttachThreadInput dance is the fallback for when it is not (e.g. verify.py
     driving this from a console).
     """

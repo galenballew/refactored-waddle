@@ -26,9 +26,9 @@ CONFIG_PATH = Path(__file__).with_name("config.json")
 DEFAULTS = {
     "boxes": ["box1", "box2", "box3", "box4", "box5"],
     "start_url": "about:blank",
-    "window_size": [900, 700],
+    "window_size": [1440, 900],
     "window_layout": "hidden",
-    "dashboard": {"size": [900, 1000], "columns": "auto", "gap": 10,
+    "dashboard": {"size": [1600, 1000], "columns": "auto", "gap": 10,
                   "refresh_ms": 1000},
 }
 
@@ -173,20 +173,20 @@ class BoxManager:
         )
 
     def navigate_all(self, url):
-        """Broadcast a navigation. Returns the boxes that refused."""
+        """Point every box at one URL. Returns the boxes that refused.
+
+        No UI reaches this any more: the dashboard has no broadcast bar, and a
+        box gets its instructions through its own chat. It survives because
+        verify.py drives pages through it to prove tiles are live, and because
+        an agentless box still has to start somewhere.
+        """
         url = normalize_url(url)
         if not url:
             return []
-        return self._broadcast(lambda box: box.page.goto(url, wait_until="commit", timeout=15000))
-
-    def reload_all(self):
-        return self._broadcast(lambda box: box.page.reload(wait_until="commit", timeout=15000))
-
-    def _broadcast(self, action):
         failed = []
         for box in self.boxes:
             try:
-                action(box)
+                box.page.goto(url, wait_until="commit", timeout=15000)
             except Exception as exc:
                 failed.append((box.name, str(exc).splitlines()[0]))
         return failed

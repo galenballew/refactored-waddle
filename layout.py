@@ -103,6 +103,36 @@ def _lay(width, height, count, aspect, columns, gap, label_h, max_thumb=None):
     return tiles
 
 
+def viewport_rect(width, height, aspect=4 / 3, max_thumb=None):
+    """The detail view's single live view: as large as the space allows, centred.
+
+    Same constraint as `tile_rects`' `max_thumb` and for the same reason -- DWM
+    will not reliably paint a thumbnail larger than its source, and it fails by
+    quietly leaving the far edge unpainted rather than by erroring. One tile
+    instead of five changes nothing about that, so a viewport bigger than the box
+    window is letterboxed rather than stretched.
+    """
+    if width <= 0 or height <= 0:
+        return Rect(0, 0, 0, 0)
+    aspect = aspect if aspect > 0 else 4 / 3
+
+    view_w = width
+    view_h = int(view_w / aspect)
+    if view_h > height:
+        view_h = height
+        view_w = int(view_h * aspect)
+    if max_thumb:
+        source_w, source_h = max_thumb
+        if source_w > 0 and view_w > source_w:
+            view_w, view_h = source_w, int(source_w / aspect)
+        if source_h > 0 and view_h > source_h:
+            view_h, view_w = source_h, int(source_h * aspect)
+
+    left = (width - view_w) // 2
+    top = (height - view_h) // 2
+    return Rect(left, top, left + view_w, top + view_h)
+
+
 def bounds_rect(x, y, width, height):
     """A Rect from the (x, y, w, h) tuples the Win32 screen metrics come back as."""
     return Rect(x, y, x + width, y + height)

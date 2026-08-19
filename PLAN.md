@@ -1,8 +1,8 @@
 # Plan: agents in the boxes
 
-Planned work, not built work. Nothing described here exists yet. The app today is
-a window manager with no agent concepts anywhere in it, and the README's "What
-this is not" list is accurate as written until M1 lands.
+Mostly planned work rather than built work. **M1 has landed; M2 onwards has not.**
+The app today is a window manager with a chat panel that nothing answers, and no
+agent concepts anywhere in the code.
 
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
@@ -46,7 +46,7 @@ the real agent is also new.
 
 ## Milestones
 
-### M1 — Two-view dashboard, no agent anywhere
+### M1 — Two-view dashboard, no agent anywhere — DONE
 
 Overview grid, detail view, chat shell, trajectory panel, dark styling pass.
 Nothing agent-shaped in the code: chat takes your message into an in-memory
@@ -154,9 +154,11 @@ only cost is memory.
   lines today and M1 alone roughly doubles it, before M2–M4 add states, attention
   cues and trajectory rendering. The architectural rule survives with its boundary
   moved: **only `ui/` touches Tkinter.**
-- **`layout.py`** — keeps `tile_rects` for the overview, gains pure functions for
-  the detail view's viewport, trajectory and chat rects, with the same `max_thumb`
-  cap applied to the viewport. Still no Tk and no Win32 in this file.
+- **`layout.py`** — keeps `tile_rects` for the overview and gains `viewport_rect`
+  for the detail view's live view, with the same `max_thumb` cap. The chat and
+  trajectory panels are laid out by Tk's packer instead: only rectangles a
+  thumbnail goes into need to be pure geometry, because those are the ones with a
+  correctness constraint worth testing. Still no Tk and no Win32 in this file.
 - **`thumbs.py`** — unchanged. Handles stay registered across a view switch,
   because the destination is the same top-level window either way, and
   `place(..., visible=False)` already exists for the four thumbnails the detail

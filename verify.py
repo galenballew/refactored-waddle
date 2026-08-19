@@ -2,23 +2,25 @@
 
     python verify.py [url]
 
+The optional URL is where the boxes are pointed before the checks run.
+
 1. every box is a live Chromium process with its own OS window
-2. a broadcast URL lands in every box
-3. summoning a box puts it on screen and in the foreground, and parking it again
+2. summoning a box puts it on screen and in the foreground, and parking it again
    takes it back off every monitor
-4. every box has a distinct live thumbnail registered
-5. the tile map is sane and clicking tile i selects box i
-6. tiles show CURRENT page content, proven by flipping the page colour -- which
+3. every box has a distinct live thumbnail registered
+4. the tile map is sane, and double-clicking tile i opens box i's detail view
+5. tiles show CURRENT page content, proven by flipping the page colour -- which
    is the proof that parking a box off the desktop did not stop it rendering
-7. a full dashboard refresh stays inside its time budget
-8. tiles stay whole when the dashboard is resized up to full screen
-9. a parked box is not a shell window: off every monitor, no taskbar button, no
+6. a full dashboard refresh stays inside its time budget
+7. tiles stay whole when the dashboard is resized up to full screen
+8. a parked box is not a shell window: off every monitor, no taskbar button, no
    Alt-Tab entry
 """
 
 import ctypes
 import sys
 import time
+import types
 from ctypes import wintypes
 from pathlib import Path
 
@@ -28,8 +30,8 @@ import winfocus
 
 thumbs.set_dpi_awareness()
 
-from boxes import BoxManager, load_config, normalize_url  # noqa: E402
-from control import ControlWindow  # noqa: E402
+from boxes import BoxManager, load_config  # noqa: E402
+from ui.app import App  # noqa: E402
 
 FOCUS_BUDGET_S = 5.0
 FOCUS_ATTEMPTS = 3
@@ -99,10 +101,10 @@ def default_url():
     return FIXTURE.as_uri()
 
 
-def pump(control, seconds=1.0):
+def pump(app, seconds=1.0):
     deadline = time.time() + seconds
     while time.time() < deadline:
-        control.root.update()
+        app.root.update()
         time.sleep(0.02)
 
 
@@ -118,22 +120,6 @@ def check_processes(manager):
         print(f"    {box.name:<8} pids={len(running):<3} hwnd={hwnd}  {'ok' if good else 'FAIL'}")
         ok = ok and good
     print(f"    -> {len(manager.boxes)} boxes, {len(seen)} distinct windows")
-    return ok
-
-
-def check_broadcast(manager, url):
-    print(f"\n[2] broadcast {url}")
-    expected = normalize_url(url)
-    for name, error in manager.navigate_all(expected):
-        print(f"    {name:<8} navigate error: {error}")
-    deadline = time.time() + 15
-    while time.time() < deadline and not all(b.url == expected for b in manager.boxes):
-        time.sleep(0.2)
-    ok = True
-    for box in manager.boxes:
-        landed = box.url == expected
-        print(f"    {box.name:<8} {box.url}  {'ok' if landed else 'FAIL'}")
-        ok = ok and landed
     return ok
 
 
@@ -168,7 +154,7 @@ def _summon_once(manager, box):
 
 
 def check_summon(manager):
-    """Prove clicking a tile brings its window onto the desktop and holds it
+    """Prove "Take control" brings a box's window onto the desktop and holds it
     there, and that leaving puts it back where nobody can see it.
 
     Only a box losing focus to ANOTHER BOX is a defect in this app. Losing it to
@@ -176,7 +162,7 @@ def check_summon(manager):
     which makes the measurement impossible rather than failed -- so retry, and if
     it keeps happening report no verdict instead of a false one.
     """
-    print(f"\n[3] summon each window, budget {FOCUS_BUDGET_S}s, hold {HOLD_S}s")
+    print(f"\n[2] summon each window, budget {FOCUS_BUDGET_S}s, hold {HOLD_S}s")
     ours = {box.hwnd for box in manager.boxes if box.hwnd}
     ok, blocked = True, []
 
@@ -210,11 +196,11 @@ def check_summon(manager):
     return ok, ("no verdict" if blocked else "")
 
 
-def check_thumbnails(control, manager):
-    print("\n[4] one distinct live thumbnail per box")
+def check_thumbnails(app, manager):
+    print("\n[3] one distinct live thumbnail per box")
     ok, seen = True, set()
     for box in manager.boxes:
-        handle = control.handles.get(box.name)
+        handle = app.handles.get(box.name)
         size = thumbs.source_size(handle) if handle is not None else None
         value = handle.value if handle is not None else None
         good = value is not None and value not in seen and size is not None and all(size)
@@ -224,14 +210,15 @@ def check_thumbnails(control, manager):
     return ok
 
 
-def check_tilemap(control, manager):
-    print("\n[5] tile map")
-    tiles = control.tiles
+def check_tilemap(app, manager):
+    print("\n[4] tile map")
+    overview = app.overview
+    tiles = overview.tiles
     count = len(manager.boxes)
     ok = len(tiles) == count
     print(f"    {len(tiles)} tiles for {count} boxes  {'ok' if ok else 'FAIL'}")
 
-    width, height = control.canvas.winfo_width(), control.canvas.winfo_height()
+    width, height = overview.canvas.winfo_width(), overview.canvas.winfo_height()
     for tile in tiles:
         inside = (
             0 <= tile.cell.left and tile.cell.right <= width
@@ -254,25 +241,39 @@ def check_tilemap(control, manager):
                 if not disjoint:
                     print(f"    tiles {a.index}/{b.index} overlap  FAIL")
                     ok = False
+
+    # Double-clicking tile i must open box i, and Back must come home again.
+    # The handler only reads x and y off the event, so a stand-in will do.
+    for tile in tiles:
+        centre_x = (tile.cell.left + tile.cell.right) // 2
+        centre_y = (tile.cell.top + tile.cell.bottom) // 2
+        overview.on_double_click(types.SimpleNamespace(x=centre_x, y=centre_y))
+        expected = manager.boxes[tile.index]
+        opened = app.box is expected and app.view is app.detail
+        app.show_overview()
+        back = app.box is None and app.view is overview
+        print(f"    tile {tile.index} opens {expected.name}={opened} back={back}"
+              f"  {'ok' if opened and back else 'FAIL'}")
+        ok = ok and opened and back
     return ok
 
 
-def check_live_tiles(control, manager):
-    print("\n[6] tiles show current content (colour flip)")
+def check_live_tiles(app, manager):
+    print("\n[5] tiles show current content (colour flip)")
     ok = True
     # The dashboard is deliberately not always-on-top any more, but this check
     # BitBlts the screen and would otherwise measure whatever window happens to
     # be in front of it. Topmost only for the duration of the sampling; it
     # changes nothing about the thumbnails being tested.
-    control.root.attributes("-topmost", True)
-    control.root.lift()
-    pump(control, 0.3)
+    app.root.attributes("-topmost", True)
+    app.root.lift()
+    pump(app, 0.3)
     for name in ("red", "blue"):
         manager.navigate_all(colour_page(name))
-        pump(control, 2.0)
-        control.draw()
-        pump(control, 0.5)
-        for index, (left, top, width, height) in enumerate(control.tile_screen_rects()):
+        pump(app, 2.0)
+        app.draw()
+        pump(app, 0.5)
+        for index, (left, top, width, height) in enumerate(app.overview.tile_screen_rects()):
             # Sample the middle of the tile: the thumbnail includes Chromium's
             # tab strip and toolbar at the top, which are not the page colour.
             sx, sy = left + width // 4, top + height // 2
@@ -286,16 +287,16 @@ def check_live_tiles(control, manager):
             print(f"    {name:<4} {box.name:<8} RGB=({r:5.1f},{g:5.1f},{b:5.1f})"
                   f"  {'ok' if good else 'FAIL'}")
             ok = ok and good
-    control.root.attributes("-topmost", False)
+    app.root.attributes("-topmost", False)
     return ok
 
 
-def check_refresh_budget(control):
-    print(f"\n[7] refresh budget {REFRESH_BUDGET_MS}ms")
+def check_refresh_budget(app):
+    print(f"\n[6] refresh budget {REFRESH_BUDGET_MS}ms")
     timings = []
     for _ in range(5):
         start = time.perf_counter()
-        control.tick()
+        app.tick()
         timings.append((time.perf_counter() - start) * 1000)
     worst = max(timings)
     ok = worst < REFRESH_BUDGET_MS
@@ -303,7 +304,7 @@ def check_refresh_budget(control):
     return ok
 
 
-def check_resize(control, manager):
+def check_resize(app, manager):
     """Prove the tiles stay whole when the window is scaled up.
 
     The bug this exists for: DWM will not reliably paint a thumbnail larger than
@@ -311,19 +312,19 @@ def check_resize(control, manager):
     simply never gets painted, which reads as a cropped browser rather than as an
     error. It is invisible at a small window size, so this check maximizes.
     """
-    print("\n[8] tiles stay whole when the dashboard is resized")
+    print("\n[7] tiles stay whole when the dashboard is resized")
     manager.navigate_all(colour_page("red"))
-    pump(control, 2.0)
-    control.root.attributes("-topmost", True)
-    control.root.lift()
+    pump(app, 2.0)
+    app.root.attributes("-topmost", True)
+    app.root.lift()
     ok = True
-    source = control._source_size()
+    source = app.source_size()
     for state, label in (("zoomed", "maximized"), ("normal", "restored")):
-        control.root.state(state)
-        pump(control, 1.5)
-        control.draw()
-        pump(control, 0.5)
-        for index, (left, top, width, height) in enumerate(control.tile_screen_rects()):
+        app.root.state(state)
+        pump(app, 1.5)
+        app.draw()
+        pump(app, 0.5)
+        for index, (left, top, width, height) in enumerate(app.overview.tile_screen_rects()):
             # Sample the far corner: that is the part that goes missing first.
             r, g, b = avg_rgb(left + width - 24, top + height - 24, 16, 16)
             painted = r > 140 and b < 110
@@ -333,7 +334,7 @@ def check_resize(control, manager):
                   f"corner=({r:5.1f},{g:5.1f},{b:5.1f}) within_source={within}"
                   f"  {'ok' if good else 'FAIL'}")
             ok = ok and good
-    control.root.attributes("-topmost", False)
+    app.root.attributes("-topmost", False)
     if source:
         print(f"    source windows are {source[0]}x{source[1]}; tiles never exceed that")
     return ok
@@ -347,7 +348,7 @@ def check_hidden(manager):
     the fleet went back into hiding by itself rather than merely starting out
     that way.
     """
-    print("\n[9] parked boxes are not shell windows")
+    print("\n[8] parked boxes are not shell windows")
     if not manager.hidden:
         print("    window_layout is not 'hidden' -- boxes are meant to be visible")
         return True, "skipped"
@@ -377,27 +378,30 @@ def main():
     manager = BoxManager(load_config())
     print(f"launching {len(manager.config['boxes'])} boxes...")
     manager.start()
+    # Setup, not a check: give the boxes something to render so the tiles are
+    # not five blank pages before the colour flip in [5] takes over.
+    for name, error in manager.navigate_all(url):
+        print(f"    {name:<8} navigate error: {error}")
 
-    control = None
+    app = None
     try:
         results = [
             ("processes", check_processes(manager)),
-            ("broadcast", check_broadcast(manager, url)),
             ("summon", check_summon(manager)),
         ]
-        control = ControlWindow(manager)
-        pump(control, 1.5)
+        app = App(manager)
+        pump(app, 1.5)
         results += [
-            ("thumbnails", check_thumbnails(control, manager)),
-            ("tilemap", check_tilemap(control, manager)),
-            ("live tiles", check_live_tiles(control, manager)),
-            ("refresh", check_refresh_budget(control)),
-            ("resize", check_resize(control, manager)),
+            ("thumbnails", check_thumbnails(app, manager)),
+            ("tilemap", check_tilemap(app, manager)),
+            ("live tiles", check_live_tiles(app, manager)),
+            ("refresh", check_refresh_budget(app)),
+            ("resize", check_resize(app, manager)),
             ("hidden", check_hidden(manager)),
         ]
     finally:
-        if control is not None:
-            control.quit()
+        if app is not None:
+            app.quit()
         manager.close()
         cleanup()
 
