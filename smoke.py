@@ -106,7 +106,7 @@ def pump(app, seconds):
     """Run the event loop for real, so the app's own timers fire."""
     deadline = time.time() + seconds
     while time.time() < deadline:
-        app.root.update()
+        app.update()
         time.sleep(0.005)
 
 
@@ -123,11 +123,11 @@ def check_views(app, manager):
     check("starts on the overview", app.view is app.overview and app.box is None)
 
     tile = tiles[2]
-    app.overview.on_double_click(types.SimpleNamespace(
-        x=(tile.cell.left + tile.cell.right) // 2,
-        y=(tile.cell.top + tile.cell.bottom) // 2,
-    ))
-    app.root.update()
+    app.overview.double_click(
+        (tile.cell.left + tile.cell.right) // 2,
+        (tile.cell.top + tile.cell.bottom) // 2,
+    )
+    app.update()
     check("double-click opens that box",
           app.view is app.detail and app.box is manager.boxes[2])
 
@@ -138,7 +138,7 @@ def check_views(app, manager):
           f"{view.right - view.left}x{view.bottom - view.top}")
 
     app.show_overview()
-    app.root.update()
+    app.update()
     check("back returns to the overview", app.view is app.overview and app.box is None)
 
 
@@ -177,9 +177,9 @@ def check_task(app, manager):
     app.send(box, "the Team plan")
     settle(app, 6)
     check("answering finishes the task", state.state == model.DONE, state.state)
-    body = app.detail.transcript.get("1.0", "end")
+    body = app.detail.transcript_text()
     check("both speakers rendered", "you" in body and box.name in body)
-    check("trajectory rendered", "clicked" in app.detail.trajectory.get("1.0", "end"))
+    check("trajectory rendered", "clicked" in app.detail.trajectory_text())
 
     before = list(state.steps)
     app.send(box, "check the changelog")
@@ -227,8 +227,8 @@ def check_controls(app, manager):
     state = app.sessions[box.name]
 
     def controls():
-        return (str(app.detail.send_button["state"]),
-                str(app.detail.stop_button["state"]))
+        state = app.detail.controls()
+        return (state.send, state.stop)
 
     check("idle: send on, stop off", controls() == ("normal", "disabled"), controls())
 
@@ -237,18 +237,18 @@ def check_controls(app, manager):
     state.state = model.WORKING
     app.detail.sync()
     check("working: send off, stop on", controls() == ("disabled", "normal"), controls())
-    check("the input is refused too", str(app.detail.entry["state"]) == "disabled")
-    check("and it says why", "Stop" in app.detail.hint.cget("text"))
+    check("the input is refused too", app.detail.controls().input == "disabled")
+    check("and it says why", "Stop" in app.detail.hint_text())
 
     state.state = model.NEEDS_INPUT
     app.detail.sync()
     check("needs input: send on, stop on", controls() == ("normal", "normal"), controls())
     check("and it says what a reply means",
-          "answers" in app.detail.hint.cget("text"))
+          "answers" in app.detail.hint_text())
 
     state.state = model.IDLE
     app.detail.sync()
-    check("idle again: no hint", app.detail.hint.cget("text") == "")
+    check("idle again: no hint", app.detail.hint_text() == "")
 
 
 def check_attention(app, manager):
@@ -267,14 +267,14 @@ def check_attention(app, manager):
     check("the counts add up", sum(counts.values()) == len(manager.boxes), counts)
 
     app.show_overview()
-    app.root.update()
+    app.update()
     order = [t.index for t in app.overview.tiles]
     check("the button offers the waiting box",
-          box.name in app.overview.jump.cget("text"), app.overview.jump.cget("text"))
+          box.name in app.overview.jump_text(), app.overview.jump_text())
     check("tiles did not reorder", order == sorted(order))
 
     app.overview.go_to_waiting()
-    app.root.update()
+    app.update()
     check("and it opens that box", app.box is box)
 
 
@@ -283,20 +283,17 @@ def check_scrollback(app, manager):
     print("\n[7] scrollback")
     box = manager.boxes[2]
     app.enter_detail(box)
-    app.root.update()
-    transcript = app.detail.transcript
-    check("the transcript has scrolled content", transcript.yview()[0] > 0,
-          f"{transcript.yview()}")
+    app.update()
+    scroll = app.detail.transcript_scroll
+    check("the transcript has scrolled content", scroll()[0] > 0, f"{scroll()}")
 
-    transcript.yview_moveto(0.0)
+    app.detail.scroll_transcript_to(0.0)
     app.detail.sync()
-    check("scrolling back survives a redraw", transcript.yview()[0] == 0.0,
-          f"{transcript.yview()}")
+    check("scrolling back survives a redraw", scroll()[0] == 0.0, f"{scroll()}")
 
-    transcript.yview_moveto(1.0)
+    app.detail.scroll_transcript_to(1.0)
     app.detail.sync()
-    check("but the end still follows", transcript.yview()[1] >= 0.999,
-          f"{transcript.yview()}")
+    check("but the end still follows", scroll()[1] >= 0.999, f"{scroll()}")
 
 
 def check_fleet(app, manager):
@@ -316,7 +313,7 @@ def check_fleet(app, manager):
     check("and a child of its own", app.agents[box.name].alive)
 
     app.show_overview()
-    app.root.update()
+    app.update()
     check("the grid grew, and still ends with the add tile",
           len(app.overview.tiles) == start + 2, len(app.overview.tiles))
 
@@ -332,9 +329,9 @@ def check_fleet(app, manager):
 
     proc = app.agents[box.name].proc
     app.enter_detail(box)
-    app.root.update()
+    app.update()
     app.detail.close_box()
-    app.root.update()
+    app.update()
     check("closing a box removes it", box not in manager.boxes)
     check("its session goes with it", box.name not in app.sessions)
     check("its child is stopped", proc.poll() is not None, proc.poll())
@@ -374,7 +371,7 @@ def check_crash(app, manager):
 
 def check_shutdown(app):
     """The one failure that outlives the run: children left behind."""
-    print("\n[10] children die with the dashboard")
+    print("\n[11] children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     app.quit()
     ok = True
@@ -402,6 +399,10 @@ class _Recorder:
         if self.script:
             return self.script.pop(0)
         return _reply([_text("done then.")], "end_turn")
+
+
+class _Rejected(Exception):
+    """Stands in for anthropic.AuthenticationError, so the fast checks need no SDK."""
 
 
 class _FakePage:
@@ -464,7 +465,7 @@ def check_model_loop():
     Claude does anything sensible with them needs credentials and cannot be
     checked from here.
     """
-    print("\n[11] the model loop, with a fake model")
+    print("\n[12] the model loop, with a fake model")
 
     def build(script):
         agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
@@ -527,17 +528,51 @@ def check_model_loop():
     _drive(agent, "go forever")
     check("a runaway loop is capped", agent.state == model.FAILED, agent.state)
 
-    agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
-    agent._page = _FakePage()
-    lines = _drive(agent, "do something")
+    # Both credential failures, faked at the seam rather than provoked for real.
+    # The real ones need a request, and the fast checks may not spend money just
+    # because the machine running them happens to have a key set -- which is
+    # what this check did before, silently, to anyone who had one.
+    def _failing(exc):
+        class Client:
+            class messages:
+                @staticmethod
+                def create(**_kwargs):
+                    raise exc
+        return Client()
+
+    def _drive_broken(client):
+        agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+        agent._client = client
+        agent._sdk = types.SimpleNamespace(AuthenticationError=_Rejected)
+        agent._page = _FakePage()
+        said = [line["text"] for line in _drive(agent, "do something")
+                if line.get("type") == "say"]
+        return agent, said
+
+    # The SDK raises TypeError, not an API error, when it found nothing to
+    # authenticate with -- there is no request to reject.
+    agent, said = _drive_broken(_failing(TypeError(
+        "Could not resolve authentication method. Expected one of api_key, "
+        "auth_token, or credentials to be set")))
     check("no credentials fails clearly, naming the fix",
-          agent.state == model.FAILED and any("ANTHROPIC_API_KEY" in line["text"]
-                                              for line in lines if line.get("type") == "say"))
+          agent.state == model.FAILED
+          and any("ANTHROPIC_API_KEY" in text for text in said), said)
+    check("and does not blame config.json, which cannot help",
+          not any("config.json" in text for text in said), said)
+
+    agent, said = _drive_broken(_failing(_Rejected("401 invalid x-api-key")))
+    check("a rejected key says so, rather than that there is none",
+          agent.state == model.FAILED
+          and any("rejected" in text for text in said), said)
+
+    agent, said = _drive_broken(_failing(TypeError("goto() takes 2 arguments")))
+    check("an unrelated TypeError is not dressed up as a missing key",
+          not any("ANTHROPIC_API_KEY" in text for text in said), said)
 
 
 def check_agent_flag():
     """The paid path is a flag, and only a flag."""
-    print("\n[12] choosing an agent")
+    print("\n[13] choosing an agent")
     check("script by default", agent_from(["main.py"]) == "script")
     check("--agent claude asks for the model",
           agent_from(["main.py", "--agent", "claude"]) == "claude")
@@ -553,7 +588,7 @@ def check_agent_flag():
 
 
 def check_geometry():
-    print("\n[13] geometry")
+    print("\n[14] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -564,11 +599,74 @@ def check_geometry():
     check("the grid gives up rather than drawing specks",
           layout.tile_rects(240, 160, 12, aspect=1.6) == [])
 
+    # A cap in the wrong units does not cap. Qt lays out in logical pixels and
+    # DWM measures the source in physical ones, so handing `layout` the raw
+    # source size would permit a thumbnail dpr times too large -- which DWM
+    # paints partially and without complaining. verify.py's check [7] only
+    # catches that on a display big enough for the cap to bind, and this machine
+    # is not one, so the arithmetic is pinned here instead. See
+    # `App.source_size_logical`.
+    source, dpr = (1440, 900), 1.5
+    capped = layout.tile_rects(6000, 4000, 6, aspect=1.6,
+                               max_thumb=(int(source[0] / dpr), int(source[1] / dpr)))
+    thumb = capped[0].thumb
+    check("a logical cap keeps the thumbnail inside its source",
+          round((thumb.right - thumb.left) * dpr) <= source[0]
+          and round((thumb.bottom - thumb.top) * dpr) <= source[1],
+          f"{thumb.right - thumb.left}x{thumb.bottom - thumb.top} logical "
+          f"= {round((thumb.right - thumb.left) * dpr)}x"
+          f"{round((thumb.bottom - thumb.top) * dpr)} physical")
+    uncapped = layout.tile_rects(6000, 4000, 6, aspect=1.6, max_thumb=source)[0].thumb
+    check("and a physical one would not",
+          round((uncapped.right - uncapped.left) * dpr) > source[0],
+          f"{round((uncapped.right - uncapped.left) * dpr)} physical vs {source[0]}")
+
+
+def check_director(app, manager):
+    """The seam demo.py drives the app through.
+
+    It used to walk the widget tree comparing button labels and read screen
+    coordinates off Tk directly, which meant the demo knew what the dashboard
+    was built out of. These are the replacements, and they are checked here
+    because a broken one only shows up two minutes into a recording.
+    """
+    print("\n[10] the director's seam")
+    app.show_overview()
+    app.update()
+
+    centre = app.overview.tile_centre(0)
+    add = app.overview.tile_centre(-1)
+    check("a tile has a screen centre", centre is not None and len(centre) == 2, centre)
+    check("the add tile has its own", add is not None and add != centre, add)
+    check("the jump button can be pointed at",
+          app.overview.control_centre("jump") is not None)
+    check("an unknown control is None rather than a crash",
+          app.overview.control_centre("nonesuch") is None)
+
+    app.enter_detail(manager.boxes[0])
+    app.update()
+    for name in ("back", "close box", "take control", "input", "send", "stop"):
+        spot = app.detail.control_centre(name)
+        check(f"detail control {name!r} can be pointed at",
+              spot is not None and len(spot) == 2, spot)
+
+    for char in "hi":
+        app.detail.type_char(char)
+    check("typing lands in the chat box", app.detail.entry_text() == "hi",
+          app.detail.entry_text())
+
+    ticks = []
+    app.schedule(1, lambda: ticks.append(1))
+    pump(app, 0.3)
+    check("the director's clock fires", ticks == [1], ticks)
+    app.flush()
+    check("flushing does not throw", True)
+
 
 def main():
     manager = FakeManager(load_config())
     app = App(manager)
-    app.root.update()
+    app.update()
     try:
         check_views(app, manager)
         check_children(app)
@@ -579,6 +677,7 @@ def main():
         check_scrollback(app, manager)
         check_crash(app, manager)
         check_fleet(app, manager)
+        check_director(app, manager)
         check_shutdown(app)  # quits the app
         check_model_loop()
         check_agent_flag()

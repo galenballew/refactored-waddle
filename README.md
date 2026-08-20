@@ -17,11 +17,12 @@ only path that costs money, and you have to ask for it every time.
 - Python 3.9 or newer. Only 3.12 has actually been run; nothing in the code
   needs anything newer than 3.8, but the other versions are untested.
 - Playwright, plus its Chromium build
+- PySide6, which draws the dashboard
 - The `anthropic` package, only if you want Claude driving the windows
 
 ```bash
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install playwright
+.venv\Scripts\python.exe -m pip install playwright PySide6
 .venv\Scripts\python.exe -m playwright install chromium
 .venv\Scripts\python.exe -m pip install anthropic      # only for --agent claude
 ```
@@ -218,7 +219,7 @@ Edit `config.json`:
   "dashboard": {
     "size": [1600, 1000],
     "columns": "auto",
-    "gap": 10,
+    "gap": 20,
     "refresh_ms": 1000
   }
 }
@@ -245,7 +246,8 @@ Edit `config.json`:
 - `dashboard.columns` — how many tiles per row on the overview. `"auto"` (the
   default) picks whichever count makes the tiles biggest, which is usually what
   you want; set a number to override it.
-- `dashboard.gap` — pixels between tiles.
+- `dashboard.gap` — pixels between tiles. Each tile's frame is drawn a few
+  pixels outside its cell, so this has to leave room for two of them.
 - `dashboard.refresh_ms` — how often the dashboard rewrites the tile captions and
   re-checks where the browser windows are. The tile images themselves are always
   live and are not affected by this.

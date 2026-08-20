@@ -7,7 +7,7 @@ stays single-threaded -- no capture work ever happens on the Tk thread.
 
 Rules worth knowing (all learned the hard way, see CLAUDE.md):
   - The destination must be a top-level window. Tk's winfo_id() is a child and
-    fails with E_INVALIDARG; use dest_hwnd() below.
+    fails with E_INVALIDARG; use top_level() below.
   - rcDestination is in the destination window's CLIENT coordinates.
   - Thumbnails always composite ABOVE the destination's own content, so anything
     you draw under a tile is invisible. Put labels outside the tile rect.
@@ -62,10 +62,13 @@ user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
 
 
 def set_dpi_awareness():
-    """Must run before Tk is created, or every rectangle is wrong on a scaled display.
+    """Must run before the UI toolkit starts, or every rectangle is wrong on a
+    scaled display.
 
-    With this on, Tk pixel units and DWM client coordinates are both physical
-    pixels, so no conversion is needed anywhere else.
+    With this on, Tk reports physical pixels, which is the unit DWM client
+    coordinates already use -- so under Tk no conversion is needed anywhere. That
+    equivalence is a property of Tk and not of this call: a toolkit that lays out
+    in logical units still has to convert where it meets rcDestination.
     """
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -75,16 +78,26 @@ def set_dpi_awareness():
         return "system"
 
 
-def dest_hwnd(widget):
-    """The top-level HWND behind a Tk widget -- the only valid thumbnail destination."""
-    return user32.GetAncestor(widget.winfo_id(), GA_ROOT)
+def top_level(hwnd):
+    """The top-level window above `hwnd` -- the only valid thumbnail destination.
+
+    Toolkits hand out child handles: Tk's winfo_id() is one, and giving it to
+    DwmRegisterThumbnail fails with E_INVALIDARG.
+    """
+    return user32.GetAncestor(hwnd, GA_ROOT)
 
 
-def client_offset(dest, widget):
-    """Where `widget` sits inside `dest`'s client area, which is what rcDestination uses."""
+def client_origin(dest):
+    """Screen coordinates of `dest`'s client (0, 0).
+
+    rcDestination is measured from this point, so a caller converts a widget's
+    screen position into thumbnail coordinates by subtracting it. Which widget,
+    and in what units it reports itself, is the toolkit's business and stays out
+    of this module -- see `App.client_offset`.
+    """
     origin = wintypes.POINT(0, 0)
     user32.ClientToScreen(dest, ctypes.byref(origin))
-    return widget.winfo_rootx() - origin.x, widget.winfo_rooty() - origin.y
+    return origin.x, origin.y
 
 
 def register(dest, source):
@@ -102,8 +115,15 @@ def source_size(handle):
     return size.cx, size.cy
 
 
-def place(handle, rect, visible=True, opacity=255):
-    """Move/show/hide a thumbnail. Non-zero return means the source died."""
+def place(handle, rect, visible=True, opacity=255, source=None):
+    """Move/show/hide a thumbnail. False means the source died.
+
+    `source` is an optional region of the source window, in its client
+    coordinates, to show instead of all of it -- which is how the browser's tab
+    strip and toolbar are kept out of a tile, since `fSourceClientAreaOnly` does
+    not strip them. DWM scales that region to fill `rect`, so the two must agree
+    about aspect or the page comes out stretched.
+    """
     props = DWM_THUMBNAIL_PROPERTIES()
     props.dwFlags = (
         DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY
@@ -112,6 +132,9 @@ def place(handle, rect, visible=True, opacity=255):
     props.opacity = opacity
     props.fVisible = bool(visible)
     props.fSourceClientAreaOnly = True
+    if source is not None:
+        props.dwFlags |= DWM_TNP_RECTSOURCE
+        props.rcSource = wintypes.RECT(*source)
     return dwm.DwmUpdateThumbnailProperties(handle, ctypes.byref(props)) == S_OK
 
 

@@ -15,11 +15,25 @@ enough to show the last thing you said without scrolling.
 
 The live view is a mirror, not the window -- DWM composites it, so you cannot
 click into it. "Take control" summons the real window for that, and is meant to
-be a rare thing to need.
+be a rare thing to need. The chat and trajectory panels must not overlap it: a
+thumbnail composites above the whole window, not merely above the widget it was
+placed over, so an overlapping panel would simply be invisible.
+
+Qt needs no wheel-routing hack here. Tk delivers the wheel to the focused
+widget, which is the input box while you are typing, so scrolling back through a
+trajectory did nothing without a global binding; Qt sends it to the widget under
+the pointer.
 """
 
-import tkinter as tk
-from tkinter import ttk
+from collections import namedtuple
+from html import escape
+
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QFontMetrics, QPainter, QPen
+from PySide6.QtWidgets import (
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout,
+    QWidget,
+)
 
 import layout
 import session as session_model
@@ -27,110 +41,188 @@ import session as session_model
 from . import theme
 from .text import short_url
 
-PAD = 12
-TRAJECTORY_W = 320
+# What the three chat controls are doing: "normal" or "disabled" each. A child
+# drops input while it is working, and this is how the checks read whether the
+# view is telling the truth about that. The words are Tk's, kept deliberately:
+# the checks are about the dashboard's behaviour, and renaming them would be
+# churn dressed up as a port.
+Controls = namedtuple("Controls", "send stop input")
+NORMAL, DISABLED = "normal", "disabled"
+
+PAD = 14
+TRAJECTORY_W = 340
 CHAT_LINES = 5
 EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
               "separate process, driving the browser in the live view.")
 EMPTY_TRAJECTORY = "no activity yet"
 
 
+class ViewportCanvas(QWidget):
+    """The live view's area. Owns no state -- it asks the view what to draw."""
+
+    def __init__(self, view):
+        super().__init__()
+        self._view = view
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        self._view.paint(painter)
+        painter.end()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._view.relayout()
+
+
 class DetailView:
     def __init__(self, app):
         self.app = app
         self.box = None
-        self.offset = (0, 0)
         self.viewport = layout.Rect(0, 0, 0, 0)
+        self._empty = False
         self.font = app.fonts["body"]
         self.small = app.fonts["small"]
 
-        self.frame = ttk.Frame(app.root)
+        self.frame = QWidget()
+        outer = QVBoxLayout(self.frame)
+        outer.setContentsMargins(PAD, PAD, PAD, PAD)
+        outer.setSpacing(6)
 
-        # -- header
-        header = ttk.Frame(self.frame)
-        header.pack(side="top", fill="x", padx=PAD, pady=(PAD, 6))
-        ttk.Button(header, text="←  Back", command=app.show_overview).pack(side="left")
-        self.title = ttk.Label(header, text="", style="Head.TLabel")
-        self.title.pack(side="left", padx=(12, 8))
-        self.url = ttk.Label(header, text="", style="Muted.TLabel")
-        self.url.pack(side="left")
-        ttk.Button(header, text="Take control", command=self.take_control).pack(
-            side="right"
-        )
-        ttk.Button(header, text="Close box", command=self.close_box).pack(
-            side="right", padx=(0, 8)
-        )
-        self.note = ttk.Label(header, text="", style="Muted.TLabel")
-        self.note.pack(side="right", padx=(0, 10))
+        outer.addLayout(self._build_header())
+        outer.addLayout(self._build_middle(), 1)
+        outer.addWidget(self._build_chat())
+
+        # Named so a director can point at one without walking the widget tree
+        # comparing labels. The view knows what its own controls are called.
+        self._controls = {
+            "back": self.back_button, "close box": self.close_button,
+            "take control": self.control_button, "input": self.entry,
+            "send": self.send_button, "stop": self.stop_button,
+        }
+
+    # -- construction -------------------------------------------------------
+
+    def _build_header(self):
+        header = QHBoxLayout()
+        self.back_button = QPushButton("←  Back")
+        self.back_button.clicked.connect(self.app.show_overview)
+        header.addWidget(self.back_button)
+
+        self.title = QLabel("")
+        self.title.setObjectName("head")
+        header.addSpacing(12)
+        header.addWidget(self.title)
+
+        self.url = QLabel("")
+        self.url.setObjectName("muted")
+        header.addSpacing(8)
+        header.addWidget(self.url)
+        header.addStretch(1)
+
         # The same state word the tile shows, so the two views teach one
         # vocabulary rather than two.
-        self.chip = tk.Label(
-            header, text="", bg=theme.BG, fg=theme.MUTED, font=app.fonts["body"]
-        )
-        self.chip.pack(side="right", padx=(0, 14))
+        self.chip = QLabel("")
+        self.chip.setFont(self.font)
+        header.addWidget(self.chip)
+        header.addSpacing(14)
 
-        # -- chat, along the bottom so the last exchange is always in view
-        chat = ttk.Frame(self.frame, style="Panel.TFrame")
-        chat.pack(side="bottom", fill="x", padx=PAD, pady=(6, PAD))
-        holder, self.transcript = self._text(chat, height=CHAT_LINES)
-        holder.pack(side="top", fill="x", padx=10, pady=(10, 2))
+        self.note = QLabel("")
+        self.note.setObjectName("muted")
+        header.addWidget(self.note)
+        header.addSpacing(10)
 
-        self.hint = ttk.Label(chat, text="", style="PanelMuted.TLabel")
-        self.hint.pack(side="top", anchor="w", padx=10, pady=(0, 4))
+        self.close_button = QPushButton("Close box")
+        self.close_button.clicked.connect(self.close_box)
+        header.addWidget(self.close_button)
+        header.addSpacing(8)
 
-        row = ttk.Frame(chat, style="Panel.TFrame")
-        row.pack(side="top", fill="x", padx=10, pady=(0, 10))
-        self.entry = tk.Entry(
-            row, bg=theme.FIELD, fg=theme.TEXT, insertbackground=theme.TEXT,
-            disabledbackground=theme.PANEL, disabledforeground=theme.DIM,
-            relief="flat", font=self.font,
-        )
-        self.entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
-        self.entry.bind("<Return>", lambda _e: self.send())
-        self.send_button = ttk.Button(row, text="Send", command=self.send)
-        self.send_button.pack(side="left")
-        self.stop_button = ttk.Button(row, text="Stop", command=self.stop)
-        self.stop_button.pack(side="left", padx=(8, 0))
+        self.control_button = QPushButton("Take control")
+        self.control_button.clicked.connect(self.take_control)
+        header.addWidget(self.control_button)
+        return header
 
-        # -- live view and trajectory
-        middle = ttk.Frame(self.frame)
-        middle.pack(side="top", fill="both", expand=True, padx=PAD)
+    def _build_middle(self):
+        middle = QHBoxLayout()
+        middle.setSpacing(PAD)
 
-        panel = ttk.Frame(middle, style="Panel.TFrame", width=TRAJECTORY_W)
-        panel.pack(side="right", fill="y", padx=(PAD, 0))
-        panel.pack_propagate(False)
-        ttk.Label(panel, text="TRAJECTORY", style="PanelMuted.TLabel").pack(
-            side="top", anchor="w", padx=10, pady=(10, 4)
-        )
-        holder, self.trajectory = self._text(panel, font=self.small)
-        holder.pack(side="top", fill="both", expand=True, padx=10, pady=(0, 10))
+        self.canvas = ViewportCanvas(self)
+        middle.addWidget(self.canvas, 1)
 
-        self.canvas = tk.Canvas(middle, bg=theme.BG, highlightthickness=0)
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.canvas.bind("<Configure>", lambda _e: self.relayout())
+        panel = QFrame()
+        panel.setObjectName("panel")
+        panel.setFixedWidth(TRAJECTORY_W)
+        column = QVBoxLayout(panel)
+        column.setContentsMargins(10, 10, 10, 10)
+        column.setSpacing(4)
+        heading = QLabel("TRAJECTORY")
+        heading.setObjectName("section")
+        column.addWidget(heading)
+        self.trajectory = self._text(self.small)
+        column.addWidget(self.trajectory, 1)
+        middle.addWidget(panel)
+        return middle
 
-        app.root.bind_all("<MouseWheel>", self._on_wheel, add="+")
+    def _build_chat(self):
+        chat = QFrame()
+        chat.setObjectName("panel")
+        column = QVBoxLayout(chat)
+        column.setContentsMargins(10, 10, 10, 10)
+        column.setSpacing(4)
 
-    def _text(self, parent, height=None, font=None):
-        """A read-only text panel with a scrollbar. Returns (container, widget)."""
-        holder = ttk.Frame(parent, style="Panel.TFrame")
-        widget = tk.Text(
-            holder, bg=theme.PANEL, fg=theme.TEXT, relief="flat", highlightthickness=0,
-            wrap="word", font=font or self.font, state="disabled", cursor="arrow",
-            spacing3=4,
-        )
-        if height:
-            widget.configure(height=height)
-        bar = ttk.Scrollbar(holder, orient="vertical", command=widget.yview)
-        widget.configure(yscrollcommand=bar.set)
-        widget.pack(side="left", fill="both", expand=True)
-        bar.pack(side="right", fill="y")
-        widget.tag_configure("speaker", foreground=theme.ACCENT)
-        widget.tag_configure("agent", foreground=theme.AGENT)
-        widget.tag_configure("muted", foreground=theme.MUTED)
-        return holder, widget
+        self.transcript = self._text(self.font)
+        metrics = QFontMetrics(self.font)
+        self.transcript.setFixedHeight(metrics.lineSpacing() * CHAT_LINES + 12)
+        column.addWidget(self.transcript)
 
-    def _rewrite(self, widget, render):
+        self.hint = QLabel("")
+        self.hint.setObjectName("muted")
+        column.addWidget(self.hint)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.entry = QLineEdit()
+        self.entry.setFont(self.font)
+        self.entry.returnPressed.connect(self.send)
+        row.addWidget(self.entry, 1)
+        self.send_button = QPushButton("Send")
+        self.send_button.setObjectName("primary")
+        self.send_button.clicked.connect(self.send)
+        row.addWidget(self.send_button)
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.clicked.connect(self.stop)
+        row.addWidget(self.stop_button)
+        column.addLayout(row)
+        return chat
+
+    def _text(self, font):
+        """A read-only text panel. Qt gives it a scrollbar when it needs one."""
+        widget = QTextEdit()
+        widget.setReadOnly(True)
+        widget.setFont(font)
+        widget.setFrameShape(QFrame.NoFrame)
+        widget.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        return widget
+
+    # -- scrolling ----------------------------------------------------------
+
+    @staticmethod
+    def _fractions(widget):
+        """(first, last) as fractions of the content height -- Tk's yview units.
+
+        Qt counts in scroll steps rather than fractions, and the full range is
+        the maximum plus one page: at the bottom, value is maximum and the page
+        below it is the rest.
+        """
+        bar = widget.verticalScrollBar()
+        span = bar.maximum() + bar.pageStep()
+        if span <= 0:
+            return (0.0, 1.0)
+        return (bar.value() / span, (bar.value() + bar.pageStep()) / span)
+
+    def _rewrite(self, widget, html):
         """Re-render a panel without stealing the reader's place in it.
 
         Everything is redrawn from the session on every change, which would
@@ -138,31 +230,14 @@ class DetailView:
         someone is reading back through a trajectory. Follow the end only if
         they were already at the end.
         """
-        first, last = widget.yview()
-        at_end = last >= 0.999
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        render(widget)
-        widget.configure(state="disabled")
+        bar = widget.verticalScrollBar()
+        at_end = self._fractions(widget)[1] >= 0.999
+        value = bar.value()
+        widget.setHtml(html)
         if at_end:
-            widget.see("end")
+            bar.setValue(bar.maximum())
         else:
-            widget.yview_moveto(first)
-
-    def _on_wheel(self, event):
-        """Scroll whichever panel the pointer is over.
-
-        Windows delivers the wheel to the focused widget, which is the input box
-        while you are typing -- so without this, scrolling back through a
-        trajectory does nothing at all.
-        """
-        widget = self.frame.winfo_containing(event.x_root, event.y_root)
-        while widget is not None:
-            if widget in (self.transcript, self.trajectory):
-                widget.yview_scroll(-1 if event.delta > 0 else 1, "units")
-                return "break"
-            widget = widget.master
-        return None
+            bar.setValue(min(value, bar.maximum()))
 
     def _session(self):
         return self.app.sessions[self.box.name] if self.box else None
@@ -170,33 +245,32 @@ class DetailView:
     # -- view protocol ------------------------------------------------------
 
     def show(self):
-        self.frame.pack(fill="both", expand=True)
-        self.entry.focus_set()
+        self.entry.setFocus()
 
     def hide(self):
-        self.frame.pack_forget()
+        pass
 
     def bind_box(self, box):
         self.box = box
-        self.title.configure(text=box.name)
-        self.note.configure(text="")
+        self.title.setText(box.name)
+        self.note.setText("")
         self.sync()
 
     def sync(self):
         """Redraw everything that follows the session: chip, controls, panels."""
         sess = self._session()
         state = sess.state if sess else session_model.IDLE
-        self.chip.configure(text=f"● {state}", fg=theme.state_colour(state))
+        self.chip.setText(f"● {state}")
+        self.chip.setStyleSheet(
+            f"color: {theme.state_colour(state)}; background: transparent;")
 
         # Input is refused while a box is working, because the agent would drop
         # it: better a disabled box and a reason than a message that vanishes.
         working = state == session_model.WORKING
-        self.entry.configure(state="disabled" if working else "normal")
-        self.send_button.configure(state="disabled" if working else "normal")
-        self.stop_button.configure(
-            state="normal" if sess is not None and sess.active else "disabled"
-        )
-        self.hint.configure(text=self._hint(state))
+        self.entry.setEnabled(not working)
+        self.send_button.setEnabled(not working)
+        self.stop_button.setEnabled(sess is not None and sess.active)
+        self.hint.setText(self._hint(state))
 
         self._render_chat()
         self._render_trajectory()
@@ -211,53 +285,119 @@ class DetailView:
         return ""
 
     def relayout(self):
-        self.offset = self.app.client_offset(self.canvas)
-        self.viewport = layout.viewport_rect(
-            self.canvas.winfo_width(),
-            self.canvas.winfo_height(),
+        # Laid out inside a margin the width of the frame, then shifted back
+        # into the middle of it. Without that the mirror fills the canvas edge
+        # to edge and its frame -- which has to sit outside the thumbnail, or be
+        # composited over -- is clipped away on three sides.
+        inset = theme.CARD_INSET
+        rect = layout.viewport_rect(
+            self.canvas.width() - inset * 2,
+            self.canvas.height() - inset * 2,
             aspect=self.app.aspect(),
-            max_thumb=self.app.source_size(),
+            max_thumb=self.app.source_size_logical(),
         )
+        self.viewport = layout.Rect(rect.left + inset, rect.top + inset,
+                                    rect.right + inset, rect.bottom + inset)
         self.draw()
 
     def draw(self):
-        self.canvas.delete("all")
+        """Put the thumbnail in the viewport, then ask for a repaint."""
         if self.box is None:
             return
-        self.url.configure(text=short_url(self.app.url_of(self.box)))
-        dx, dy = self.offset
-        rect = (
-            self.viewport.left + dx, self.viewport.top + dy,
-            self.viewport.right + dx, self.viewport.bottom + dy,
+        self.url.setText(short_url(self.app.url_of(self.box)))
+        rect = self.app.thumb_rect(self.canvas, self.viewport)
+        self._empty = not self.app.place(self.box, rect)
+        self.canvas.update()
+
+    def paint(self, painter):
+        painter.fillRect(self.canvas.rect(), theme.qcolour(theme.BG))
+        if self.box is None:
+            return
+        rect = QRectF(self.viewport.left, self.viewport.top,
+                      self.viewport.right - self.viewport.left,
+                      self.viewport.bottom - self.viewport.top)
+        if self._empty:
+            painter.setPen(QPen(theme.qcolour(theme.EMPTY_EDGE), 1))
+            painter.setBrush(theme.qcolour(theme.EMPTY_BG))
+            painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
+            painter.setFont(self.font)
+            painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
+            painter.drawText(rect, Qt.AlignCenter, "no window")
+            return
+        # The same frame a tile gets, outside the mirror for the same reason: a
+        # thumbnail composites above this widget, so a border on the boundary
+        # would be half eaten by it.
+        painter.setPen(QPen(theme.qcolour(theme.EDGE), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(
+            rect.adjusted(-theme.CARD_INSET, -theme.CARD_INSET,
+                          theme.CARD_INSET, theme.CARD_INSET),
+            theme.RADIUS, theme.RADIUS)
+
+    # -- inspection ---------------------------------------------------------
+    #
+    # The checks read the view through these rather than through widget APIs.
+    # `viewport` needs no accessor: it is already a layout.Rect and owes nothing
+    # to the toolkit.
+
+    def transcript_text(self):
+        return self.transcript.toPlainText()
+
+    def trajectory_text(self):
+        return self.trajectory.toPlainText()
+
+    def entry_text(self):
+        """What is currently typed but not yet sent."""
+        return self.entry.text()
+
+    def hint_text(self):
+        return self.hint.text()
+
+    def transcript_scroll(self):
+        """Where the transcript is scrolled, as (first, last) fractions."""
+        return self._fractions(self.transcript)
+
+    def scroll_transcript_to(self, fraction):
+        bar = self.transcript.verticalScrollBar()
+        bar.setValue(round(fraction * bar.maximum()))
+
+    def controls(self):
+        """Whether send, stop and the input are each enabled right now."""
+        return Controls(
+            NORMAL if self.send_button.isEnabled() else DISABLED,
+            NORMAL if self.stop_button.isEnabled() else DISABLED,
+            NORMAL if self.entry.isEnabled() else DISABLED,
         )
-        if not self.app.place(self.box, rect):
-            self.canvas.create_rectangle(
-                *self.viewport, outline=theme.EMPTY_EDGE, fill=theme.EMPTY_BG
-            )
-            self.canvas.create_text(
-                (self.viewport.left + self.viewport.right) // 2,
-                (self.viewport.top + self.viewport.bottom) // 2,
-                text="no window", fill=theme.EMPTY_TEXT, font=self.font,
-            )
+
+    def control_centre(self, name):
+        """Screen centre of one named control, for the demo's pointer."""
+        widget = self._controls.get(name)
+        return self.app.centre_of(widget) if widget is not None else None
+
+    def type_char(self, char):
+        """Append one character to the chat box, as a keystroke would.
+
+        The input is disabled while a box is working, and the demo types during
+        exactly that -- so it is enabled first. Cosmetic: `send()` is still what
+        actually delivers the message.
+        """
+        self.entry.setEnabled(True)
+        self.entry.setFocus()
+        self.entry.setText(self.entry.text() + char)
 
     def viewport_screen_rect(self):
-        """The live view in screen coordinates, for verify.py."""
-        return (
-            self.canvas.winfo_rootx() + self.viewport.left,
-            self.canvas.winfo_rooty() + self.viewport.top,
-            self.viewport.right - self.viewport.left,
-            self.viewport.bottom - self.viewport.top,
-        )
+        """The live view in physical screen pixels, for verify.py."""
+        return self.app.screen_rect(self.canvas, self.viewport)
 
     # -- chat ---------------------------------------------------------------
 
     def send(self):
         if self.box is None:
             return
-        text = self.entry.get()
+        text = self.entry.text()
         if not text.strip():
             return
-        self.entry.delete(0, "end")
+        self.entry.clear()
         # What this means -- a new task, or an answer to a question -- is the
         # driver's decision, not the view's.
         self.app.send(self.box, text)
@@ -273,29 +413,36 @@ class DetailView:
 
     def _render_chat(self):
         sess = self._session()
-
-        def render(widget):
-            if sess is None or not sess.turns:
-                widget.insert("end", EMPTY_CHAT, "muted")
-                return
+        if sess is None or not sess.turns:
+            html = self._muted(EMPTY_CHAT)
+        else:
+            lines = []
             for turn in sess.turns:
-                tag = "speaker" if turn.speaker == session_model.USER else "agent"
-                widget.insert("end", f"{turn.speaker}  ", tag)
-                widget.insert("end", f"{turn.text}\n")
-
-        self._rewrite(self.transcript, render)
+                colour = (theme.ACCENT if turn.speaker == session_model.USER
+                          else theme.AGENT)
+                lines.append(
+                    f'<span style="color:{colour}">{escape(turn.speaker)}</span>'
+                    f'&nbsp;&nbsp;{escape(turn.text)}'
+                )
+            html = self._body("<br>".join(lines))
+        self._rewrite(self.transcript, html)
 
     def _render_trajectory(self):
         sess = self._session()
+        if sess is None or not sess.steps:
+            html = self._muted(EMPTY_TRAJECTORY)
+        else:
+            html = self._body("<br>".join(
+                f"·&nbsp;&nbsp;{escape(str(step))}" for step in sess.steps))
+        self._rewrite(self.trajectory, html)
 
-        def render(widget):
-            if sess is None or not sess.steps:
-                widget.insert("end", EMPTY_TRAJECTORY, "muted")
-                return
-            for step in sess.steps:
-                widget.insert("end", f"·  {step}\n")
+    @staticmethod
+    def _body(inner):
+        return f'<div style="color:{theme.TEXT}">{inner}</div>'
 
-        self._rewrite(self.trajectory, render)
+    @staticmethod
+    def _muted(text):
+        return f'<div style="color:{theme.MUTED}">{escape(text)}</div>'
 
     # -- actions ------------------------------------------------------------
 
@@ -309,7 +456,7 @@ class DetailView:
         if self.box is None:
             return
         if not self.app.remove_box(self.box):
-            self.note.configure(text="the last box stays")
+            self.note.setText("the last box stays")
 
     def take_control(self):
         """Put the real window on the desktop. Clicking back here parks it again.
@@ -320,6 +467,6 @@ class DetailView:
         if self.box is None:
             return
         if self.app.manager.summon(self.box):
-            self.note.configure(text="summoned — click here to send it back")
+            self.note.setText("summoned — click here to send it back")
         else:
-            self.note.configure(text="no window to summon")
+            self.note.setText("no window to summon")

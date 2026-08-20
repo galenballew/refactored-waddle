@@ -26,15 +26,24 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 SPI_GETWORKAREA = 0x0030
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
+HWND_TOPMOST = -1
+HWND_NOTOPMOST = -2
 SM_XVIRTUALSCREEN = 76
 SM_YVIRTUALSCREEN = 77
 SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
 CHROME_WINDOW_CLASS = "Chrome_WidgetWin_1"
+# The renderer's own child window: the page, without the tab strip or toolbar.
+CHROME_RENDER_WIDGET_CLASS = "Chrome_RenderWidgetHostHWND"
 
 # 64-bit handles are truncated without explicit restypes.
+user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND,
+                                 wintypes.LPCWSTR, wintypes.LPCWSTR]
+user32.FindWindowExW.restype = wintypes.HWND
 user32.GetForegroundWindow.restype = wintypes.HWND
 user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
 user32.GetWindow.restype = wintypes.HWND
@@ -172,6 +181,50 @@ def move_window(hwnd, x, y, width, height):
     return bool(
         user32.SetWindowPos(hwnd, None, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE)
     )
+
+
+def page_rect(hwnd):
+    """Where the page itself is inside a Chromium window, in client coordinates.
+
+    The tab strip and the toolbar are client area, so DWM's
+    `fSourceClientAreaOnly` does not strip them -- a tile mirrors the whole
+    browser, chrome included. The renderer, though, lives in its own child
+    window, and its bounds are exactly the region worth showing.
+
+    Measured rather than assumed: the chrome is 130px tall on this machine at
+    150% scaling, and would be a different number at another zoom, with a
+    bookmarks bar, or on another Chromium build.
+
+    Returns None if the child window is not there -- a browser still starting
+    up, or some future Chromium that arranges itself differently -- and the
+    caller shows the whole window, which is merely the old behaviour.
+    """
+    if not hwnd:
+        return None
+    child = user32.FindWindowExW(hwnd, None, CHROME_RENDER_WIDGET_CLASS, None)
+    if not child:
+        return None
+    bounds = wintypes.RECT()
+    if not user32.GetWindowRect(child, ctypes.byref(bounds)):
+        return None
+    origin = wintypes.POINT(0, 0)
+    user32.ClientToScreen(hwnd, ctypes.byref(origin))
+    return (bounds.left - origin.x, bounds.top - origin.y,
+            bounds.right - origin.x, bounds.bottom - origin.y)
+
+
+def set_topmost(hwnd, on):
+    """Float a window above the others, or stop.
+
+    Done on the HWND rather than through the toolkit on purpose: Qt recreates
+    the native window when a window flag changes, which would silently
+    invalidate every DWM thumbnail registered against it. SetWindowPos only
+    changes the z-order.
+    """
+    if not hwnd:
+        return False
+    return bool(user32.SetWindowPos(hwnd, HWND_TOPMOST if on else HWND_NOTOPMOST,
+                                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
 
 
 def is_window(hwnd):

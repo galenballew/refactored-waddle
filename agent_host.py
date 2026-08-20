@@ -328,6 +328,15 @@ MAX_OUTPUT_TOKENS = 8000
 PAGE_TEXT_CHARS = 4000
 SHOT_QUALITY = 60       # JPEG: a page screenshot is sent to the model every time
 
+# Both go through `fail`, which keeps the first line and 200 characters, so they
+# are one line each. Neither names config.json: the paid path is a flag, and a
+# config key has never been able to turn it on or off.
+NO_CREDENTIALS = (
+    "no API credentials — set ANTHROPIC_API_KEY (or run `ant auth login`) and "
+    "restart, or drop --agent claude to run the scripted agent instead"
+)
+BAD_CREDENTIALS = "the API rejected those credentials — check ANTHROPIC_API_KEY"
+
 SYSTEM = """You are driving one Chromium window on someone's desktop. It is called
 {name}, and it is one of several windows they are watching side by side.
 
@@ -401,6 +410,7 @@ class ModelAgent(BrowserAgent):
     def __init__(self, name, endpoint):
         super().__init__(name, endpoint)
         self._client = None
+        self._sdk = None           # the anthropic module, for its exception types
         self.messages = []
         self.turns = 0
         self.spent = [0, 0]        # input, output tokens this task
@@ -441,15 +451,15 @@ class ModelAgent(BrowserAgent):
             raise RuntimeError(
                 "the anthropic package is not installed in this environment"
             )
-        # Zero-arg: picks up ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or a
-        # profile from `ant auth login`.
-        client = anthropic.Anthropic()
-        if not (client.api_key or client.auth_token):
-            raise RuntimeError(
-                "no API credentials — set ANTHROPIC_API_KEY, or run `ant auth login`, "
-                "or set \"agent\": \"script\" in config.json to run without a model"
-            )
-        self._client = client
+        # Zero-arg, and deliberately unchecked. The SDK resolves credentials
+        # from five places -- ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
+        # ANTHROPIC_PROFILE, workload federation, and the profile `ant auth
+        # login` leaves on disk -- and only the first two ever land on an
+        # attribute we could read here. Testing those two told anyone using the
+        # other three that they had no credentials, while holding a client that
+        # worked. Only the request knows, so `_turn` asks it.
+        self._sdk = anthropic
+        self._client = anthropic.Anthropic()
         return self._client
 
     def _turn(self):
@@ -461,14 +471,24 @@ class ModelAgent(BrowserAgent):
 
         client = self._client_or_fail()
         self._connect()  # so the first tool call is not also the first connection
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_OUTPUT_TOKENS,
-            system=SYSTEM.format(name=self.name),
-            tools=TOOLS,
-            thinking={"type": "adaptive"},
-            messages=self.messages,
-        )
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                system=SYSTEM.format(name=self.name),
+                tools=TOOLS,
+                thinking={"type": "adaptive"},
+                messages=self.messages,
+            )
+        except self._sdk.AuthenticationError as exc:
+            raise RuntimeError(BAD_CREDENTIALS) from exc
+        except TypeError as exc:
+            # What the SDK raises when it found nothing to authenticate with.
+            # Narrow, because a TypeError from anywhere else is a bug in here
+            # and must not be dressed up as a missing key.
+            if "authentication method" not in str(exc):
+                raise
+            raise RuntimeError(NO_CREDENTIALS) from exc
         self.spent[0] += response.usage.input_tokens
         self.spent[1] += response.usage.output_tokens
         self.messages.append({"role": "assistant", "content": response.content})

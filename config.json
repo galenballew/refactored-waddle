@@ -1,13 +1,25 @@
 {
-  "boxes": ["box1", "box2", "box3", "box4", "box5"],
+  "boxes": [
+    "box1",
+    "box2",
+    "box3",
+    "box4",
+    "box5"
+  ],
   "start_url": "about:blank",
-  "window_size": [1440, 900],
+  "window_size": [
+    1440,
+    900
+  ],
   "window_layout": "hidden",
   "max_boxes": 12,
   "dashboard": {
-    "size": [1600, 1000],
+    "size": [
+      1600,
+      1000
+    ],
     "columns": "auto",
-    "gap": 10,
+    "gap": 20,
     "refresh_ms": 1000
   }
 }
