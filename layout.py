@@ -21,7 +21,7 @@ CASCADE = 40
 
 
 def tile_rects(width, height, count, aspect=4 / 3, columns="auto", gap=10, label_h=20,
-               max_thumb=None):
+               max_thumb=None, label_max=None):
     """Lay `count` tiles into a width x height area.
 
     `columns="auto"` picks whichever column count makes the tiles biggest, which
@@ -33,16 +33,42 @@ def tile_rects(width, height, count, aspect=4 / 3, columns="auto", gap=10, label
     paint a thumbnail bigger than its source: it fails by quietly leaving the far
     edge of the later tiles unpainted. Total area is not the constraint — five
     1200x930 tiles are fine from 1200x930 windows — only the ratio to the source.
+
+    `label_max` is what to do with the space left over, and there is always some.
+    A grid of aspect-locked cells cannot fill its area in both directions: fix
+    the width and the height follows from the aspect, so whichever one does not
+    bind is slack. At 1600x1000 with six cells that is ~230px of it, vertically.
+
+    Two things about that slack, both worth knowing before trying to delete it:
+
+    **It is not removable.** Bigger tiles would need a different aspect (the
+    source window's, so no) or fewer columns — and fewer columns makes the tiles
+    *smaller*, not bigger, which is what `_best_columns` already proved by
+    picking this one. What is left over is a margin, not a bug.
+
+    **It is worth spending, up to a point.** Given to the caption strip it turns
+    into the one part of a tile you can actually read: at 30-60% scale the
+    thumbnail is a texture, and the caption is where the box says what it is. So
+    `label_max` takes what it needs for one more line and no more, and the
+    remainder stays a centred margin on purpose. Distributing that remainder
+    between the rows instead would fill the panel, but a grid gapped 66px
+    vertically and 20px horizontally reads as a mistake rather than as a design.
+
+    None keeps the strip at `label_h` and centres the grid in whatever is left.
     """
     if columns == "auto":
-        columns = _best_columns(width, height, count, aspect, gap, label_h, max_thumb)
-    return _lay(width, height, count, aspect, columns, gap, label_h, max_thumb)
+        columns = _best_columns(width, height, count, aspect, gap, label_h, max_thumb,
+                                label_max)
+    return _lay(width, height, count, aspect, columns, gap, label_h, max_thumb,
+                label_max)
 
 
-def _best_columns(width, height, count, aspect, gap, label_h, max_thumb=None):
+def _best_columns(width, height, count, aspect, gap, label_h, max_thumb=None,
+                  label_max=None):
     best, best_area = 1, -1
     for columns in range(1, max(1, count) + 1):
-        tiles = _lay(width, height, count, aspect, columns, gap, label_h, max_thumb)
+        tiles = _lay(width, height, count, aspect, columns, gap, label_h, max_thumb,
+                     label_max)
         if not tiles:
             continue
         thumb = tiles[0].thumb
@@ -52,7 +78,8 @@ def _best_columns(width, height, count, aspect, gap, label_h, max_thumb=None):
     return best
 
 
-def _lay(width, height, count, aspect, columns, gap, label_h, max_thumb=None):
+def _lay(width, height, count, aspect, columns, gap, label_h, max_thumb=None,
+         label_max=None):
     """Cells are sized to the source aspect rather than dividing the area evenly,
     so a tile is exactly its image plus a caption strip and no dead space.
 
@@ -81,6 +108,16 @@ def _lay(width, height, count, aspect, columns, gap, label_h, max_thumb=None):
 
     if cell_w < MIN_TILE or thumb_h < MIN_TILE:
         return []
+
+    # Spend the vertical slack on the captions rather than on the background.
+    # Only ever downward from `label_max`, and only out of space that was going
+    # to be empty: the thumbnail keeps the size it was given, so this cannot
+    # push a tile past its source and reintroduce the silent-crop bug.
+    if label_max and label_max > label_h:
+        slack = height - gap * 2 - (rows * cell_h + gap * (rows - 1))
+        if slack > 0:
+            label_h = min(label_max, label_h + slack // rows)
+            cell_h = thumb_h + label_h
 
     span = columns * cell_w + gap * (columns - 1)
     origin_x = max(gap, (width - span) // 2)

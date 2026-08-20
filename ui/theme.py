@@ -136,6 +136,14 @@ QPushButton:disabled {{
     color: {DIM};
     border-color: {EDGE};
 }}
+/* Header buttons. A header is chrome around the thing you came here to look at,
+   and at the body size these are tall enough to compete with it -- which on the
+   detail view costs the live mirror the height it takes. */
+QPushButton#compact {{
+    padding: 4px 11px;
+    font-size: 9pt;
+}}
+
 QPushButton#primary {{
     background: {ACCENT};
     color: #0d1116;

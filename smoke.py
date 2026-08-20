@@ -737,6 +737,35 @@ def check_geometry():
           round((uncapped.right - uncapped.left) * dpr) > source[0],
           f"{round((uncapped.right - uncapped.left) * dpr)} physical vs {source[0]}")
 
+    # Vertical slack goes to the captions, never to the thumbnails. Growing a
+    # thumbnail out of slack is exactly the silent-crop bug the cap above
+    # exists to prevent, so the two have to be shown not to fight.
+    args = dict(aspect=1.6, columns="auto", gap=20, label_h=27,
+                max_thumb=(960, 600))
+    plain = layout.tile_rects(1572, 932, 6, **args)
+    grown = layout.tile_rects(1572, 932, 6, label_max=48, **args)
+    strip = grown[0].label.bottom - grown[0].label.top
+    check("spare height goes to the caption strip", strip > 27, f"{strip}px strip")
+    check("and never past what was asked for", strip <= 48, strip)
+    # Size, not position: a taller strip moves the grid down a little, which is
+    # centring doing its job and not the thumbnail changing.
+    def size(rect):
+        return (rect.right - rect.left, rect.bottom - rect.top)
+
+    check("the thumbnail is not touched by it",
+          size(grown[0].thumb) == size(plain[0].thumb),
+          f"{size(grown[0].thumb)} vs {size(plain[0].thumb)}")
+    check("the grid still fits",
+          grown[-1].cell.bottom <= 932 and grown[0].cell.top >= 0,
+          f"bottom {grown[-1].cell.bottom} of 932")
+
+    # No slack, no growth: a caption may not eat into a grid that is already
+    # full, because the only thing it could take the space from is the tiles.
+    tight = layout.tile_rects(1572, 700, 6, label_max=90, **args)
+    check("a full grid keeps its caption small",
+          tight[0].label.bottom - tight[0].label.top < 90,
+          tight[0].label.bottom - tight[0].label.top)
+
 
 def check_director(app, manager):
     """The seam demo.py drives the app through.

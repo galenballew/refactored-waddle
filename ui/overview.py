@@ -89,6 +89,11 @@ class OverviewView:
         # not thumbnail. Measured rather than guessed, so a different font size
         # does not quietly clip the captions.
         self.label_h = self.name_metrics.height() + LABEL_PAD
+        # What the strip may grow to if the grid has vertical space going spare,
+        # which it usually does -- see `layout.tile_rects`. Enough for a second
+        # line and no more: past that the caption stops being a caption and the
+        # tile it belongs to starts looking like an afterthought.
+        self.label_max = self.label_h + self.metrics.height() + 4
 
         self.frame = QWidget()
         outer = QVBoxLayout(self.frame)
@@ -161,6 +166,7 @@ class OverviewView:
             # Logical, not physical: a tile is measured in the units Qt lays out
             # in, and the cap has to be in the same ones or it does not cap.
             max_thumb=self.app.source_size_logical(),
+            label_max=self.label_max,
         )
         self.draw()
 
@@ -332,6 +338,34 @@ class OverviewView:
             self.metrics.horizontalAdvance,
             short_url(self.app.url_of(box)),
             right - x,
+        ))
+        self._paint_last_action(painter, tile, box, baseline, hover)
+
+    def _paint_last_action(self, painter, tile, box, first_baseline, hover):
+        """The last thing this box actually did, when there is room to say it.
+
+        The room comes from the grid's vertical slack, which `label_max` spends
+        here instead of leaving it as background -- so this line exists at the
+        sizes where it fits and simply does not at the sizes where it would
+        crowd the tile, rather than being a setting anyone has to know about.
+
+        It is the trajectory's last entry, which is a record of something that
+        happened. Not a summary, not a score, and not a count of anything: an
+        overview that ranked its boxes would be a different app.
+        """
+        second = first_baseline + self.metrics.height() + 2
+        if second > tile.label.bottom - 2:
+            return
+        sess = self.app.sessions.get(box.name)
+        line = sess.steps[-1] if sess and sess.steps else ""
+        if not line:
+            return
+        painter.setFont(self.font)
+        painter.setPen(theme.mix(theme.DIM, theme.MUTED, hover))
+        painter.drawText(tile.label.left + 8, second, clip(
+            self.metrics.horizontalAdvance,
+            str(line),
+            tile.label.right - 8 - (tile.label.left + 8),
         ))
 
     def _paint_add_tile(self, painter, tile):

@@ -50,7 +50,8 @@ Controls = namedtuple("Controls", "send stop input")
 NORMAL, DISABLED = "normal", "disabled"
 
 PAD = 14
-TRAJECTORY_W = 340
+TRAJECTORY_MIN_W = 300
+TRAJECTORY_MAX_W = 460
 CHAT_LINES = 5
 EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
               "separate process, driving the browser in the live view.")
@@ -107,6 +108,7 @@ class DetailView:
     def _build_header(self):
         header = QHBoxLayout()
         self.back_button = QPushButton("←  Back")
+        self.back_button.setObjectName("compact")
         self.back_button.clicked.connect(self.app.show_overview)
         header.addWidget(self.back_button)
 
@@ -134,11 +136,13 @@ class DetailView:
         header.addSpacing(10)
 
         self.close_button = QPushButton("Close box")
+        self.close_button.setObjectName("compact")
         self.close_button.clicked.connect(self.close_box)
         header.addWidget(self.close_button)
         header.addSpacing(8)
 
         self.control_button = QPushButton("Take control")
+        self.control_button.setObjectName("compact")
         self.control_button.clicked.connect(self.take_control)
         header.addWidget(self.control_button)
         return header
@@ -148,11 +152,18 @@ class DetailView:
         middle.setSpacing(PAD)
 
         self.canvas = ViewportCanvas(self)
-        middle.addWidget(self.canvas, 1)
+        middle.addWidget(self.canvas, 5)
 
         panel = QFrame()
         panel.setObjectName("panel")
-        panel.setFixedWidth(TRAJECTORY_W)
+        # Proportional between bounds rather than one fixed width. The mirror
+        # beside it is aspect-locked and letterboxed inside whatever it is given,
+        # so on a wide display a fixed 340px panel does not take space from the
+        # live view -- it leaves it as background either side of it. Below the
+        # minimum a trajectory line is all ellipsis; above the maximum the panel
+        # is mostly empty and reading across to it becomes a head movement.
+        panel.setMinimumWidth(TRAJECTORY_MIN_W)
+        panel.setMaximumWidth(TRAJECTORY_MAX_W)
         column = QVBoxLayout(panel)
         column.setContentsMargins(10, 10, 10, 10)
         column.setSpacing(4)
@@ -161,7 +172,7 @@ class DetailView:
         column.addWidget(heading)
         self.trajectory = self._text(self.small)
         column.addWidget(self.trajectory, 1)
-        middle.addWidget(panel)
+        middle.addWidget(panel, 2)
         return middle
 
     def _build_chat(self):
