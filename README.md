@@ -132,10 +132,28 @@ Set `"agent": "claude"` in `config.json` and every window gets a real Claude loo
 in place of the script. **This spends money on your Anthropic account, once per
 task**, so it is off until you ask for it.
 
-You need credentials — either `ANTHROPIC_API_KEY` in the environment, or a
-profile from `ant auth login` — and the `anthropic` package installed. Without
-them a window will tell you so in its chat and end up `failed`; nothing else
-breaks.
+You need the `anthropic` package installed (see above) and an API key in the
+environment. Get a key from [console.anthropic.com](https://console.anthropic.com)
+and set it in the terminal you start the app from — the agent processes inherit
+their environment from the dashboard, so that is all it takes:
+
+```bash
+$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+```
+
+```bash
+.venv\Scripts\python.exe main.py
+```
+
+To keep it across terminals, `setx ANTHROPIC_API_KEY "sk-ant-your-key-here"` sets
+it for your account and applies to terminals opened afterwards. **Do not put the
+key in `config.json`** — that file is checked into the repository.
+
+(The SDK will also use a profile from Anthropic's `ant` CLI if you have one, but
+nothing here installs that and an API key is all this needs.)
+
+Without credentials, a window tells you so in its chat and ends up `failed`;
+nothing else breaks.
 
 What changes: the window still opens pages, reads them, screenshots them and
 clicks things, but Claude chooses which, in what order, and when it has enough to

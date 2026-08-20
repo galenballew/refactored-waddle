@@ -6,10 +6,6 @@ links — and you can task it, answer it, stop it, and add or close boxes while 
 runs. With `"agent": "claude"` the deciding is done by a model; with the default
 `"script"` nothing contacts Anthropic at all.
 
-One thing is outstanding: the model path has never been run against a live key,
-because this machine has no credentials. See M7 for exactly what that leaves
-unproven.
-
 The goal: each box gets its own agent, and the dashboard becomes the place you
 talk to all of them. You give a box a task in chat, watch what its agent does,
 answer it when it needs you, and see at a glance which of them is working,
@@ -216,7 +212,7 @@ Chromium supports this, but this app has never done it, and box launch is also
 where PID attribution happens — the raciest thing in the codebase. Change launch
 carefully.
 
-### M7 — Swap in the model — DONE (not yet run against a live key)
+### M7 — Swap in the model — DONE
 
 Landed as `ModelAgent` in `agent_host.py`, reached with `"agent": "claude"` in the
 config. The boundary held: nothing outside that file changed except plumbing one
@@ -242,13 +238,17 @@ launched it is not one anyone should trust. Two guards on the opt-in path: twelv
 model turns per task, and every task reports what it cost as its last trajectory
 line.
 
-**What is unverified:** the live call. This machine has no `ANTHROPIC_API_KEY`, no
-`ant` profile, and no `ant` CLI, so the loop has never spoken to Anthropic. What
-*is* verified is everything around it — `smoke.py` [11] drives the real loop with
-a fake client: tool dispatch, the ask-and-resume round trip, an erroring tool not
-killing the task, screenshots going up as image blocks, the turn cap, and a clean
-failure naming the fix when there are no credentials. First run with a real key is
-the outstanding work.
+**Run against a live key and working.** The automated coverage stays on a fake
+client: `smoke.py` [11] drives the real loop end to end — tool dispatch, the
+ask-and-resume round trip, an erroring tool not killing the task, screenshots
+going up as image blocks, the turn cap, and a clean failure naming the fix when
+credentials are missing. A check that spends money every time it runs is not a
+check anyone should have to pay for, so the live path is exercised by using the
+app, not by the suite.
+
+Note for anyone setting this up: Anthropic's `ant` CLI is *not* what
+`pip install anthropic` gives you — that package ships no console scripts at all.
+An API key in the environment is the whole requirement.
 
 The original plan follows.
 
