@@ -1,5 +1,13 @@
 {
   "boxes": ["box1", "box2", "box3", "box4", "box5"],
   "start_url": "about:blank",
-  "window_size": [900, 700]
+  "window_size": [1440, 900],
+  "window_layout": "hidden",
+  "max_boxes": 12,
+  "dashboard": {
+    "size": [1600, 1000],
+    "columns": "auto",
+    "gap": 10,
+    "refresh_ms": 1000
+  }
 }
