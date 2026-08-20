@@ -1,11 +1,13 @@
 """One box, up close: a live view of it, its chat, and what it has been doing.
 
-The chat is where the work will happen once there is an agent behind it. What
-answers today is `fake_agent.py`, walking a script on a timer: the states are
-real, the transitions are real, and everything they describe is invented.
+The chat is where the work happens. What answers is `agent_host.py`, one child
+process per box, reached over a pipe: it drives that box's browser over CDP, so
+the states are real, the transitions are real, and so is everything they
+describe.
 
 The view decides none of it. It sends what was typed and redraws what the session
-says, which is the shape it will keep when the driver becomes a subprocess.
+says; the driver is a subprocess on the far side of that seam, and this view
+knows nothing about what it does.
 
 The trajectory panel is separate from the chat on purpose. An agent's tool calls
 and page visits belong somewhere you can ignore, so that the chat stays short
@@ -28,8 +30,8 @@ from .text import short_url
 PAD = 12
 TRAJECTORY_W = 320
 CHAT_LINES = 5
-EMPTY_CHAT = ("No task yet. Whatever you send is run by a scripted stand-in — "
-              "there is no agent behind this box.")
+EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
+              "separate process, driving the browser in the live view.")
 EMPTY_TRAJECTORY = "no activity yet"
 
 

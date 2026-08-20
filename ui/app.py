@@ -56,9 +56,9 @@ class App:
         self.adding = False   # a launch is running on this thread right now
         self._added_at = 0.0
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
-        # One child process per box. What it runs is a stand-in; that it is a
-        # separate process, reached only by sending a line and draining a pipe,
-        # is real and is the point.
+        # One child process per box, driving that box's browser over CDP. That
+        # it is a separate process, reached only by sending a line and draining
+        # a pipe, is the point.
         self.agents = {
             box.name: self._spawn(box) for box in manager.boxes
         }

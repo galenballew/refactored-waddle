@@ -79,6 +79,10 @@ layout.py     pure geometry — grid rects, the detail viewport, hit testing,
               usually 1, and 2 wastes two thirds of the panel.
 smoke.py      the fast checks: dashboard plus agent children, no browsers
 verify.py     the eleven proof checks
+demo.py       the demo video: the real dashboard and real boxes, driven
+              through a fixed script for the camera. Every beat goes through
+              the same seam a click would, and it reaches deep into Tk to do
+              it — the one consumer allowed to
 ```
 
 Panel geometry inside a view is Tk's packer, not `layout.py`. Only rectangles a
