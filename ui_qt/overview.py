@@ -23,10 +23,8 @@ import session
 from . import theme
 from .text import clip, short_url
 
-LABEL_PAD = 6
-PAD = 12
-RING = 3      # how far outside the thumb the state ring sits
-RADIUS = 4    # corner radius on rings and tile outlines
+LABEL_PAD = 12   # caption strip padding, above and below the text
+PAD = 14
 
 
 class TileCanvas(QWidget):
@@ -69,8 +67,13 @@ class OverviewView:
 
         self.font = app.fonts["small"]
         self.body = app.fonts["body"]
+        self.name_font = app.fonts["name"]
         self.metrics = QFontMetrics(self.font)
-        self.label_h = self.metrics.height() + LABEL_PAD
+        self.name_metrics = QFontMetrics(self.name_font)
+        # The strip the caption sits in, and therefore how much of each cell is
+        # not thumbnail. Measured rather than guessed, so a different font size
+        # does not quietly clip the captions.
+        self.label_h = self.name_metrics.height() + LABEL_PAD
 
         self.frame = QWidget()
         outer = QVBoxLayout(self.frame)
@@ -88,7 +91,7 @@ class OverviewView:
         header.addStretch(1)
 
         # One label per state rather than one string, so each count is in its own
-        # colour -- the same colour as the ring on the tiles it is counting.
+        # colour -- the same colour as the frame on the tiles it is counting.
         # Added once, in order, and only shown or hidden after that: a Qt layout
         # skips a hidden widget's spacing too, so the states cannot drift out of
         # their fixed order the way re-packing would let them.
@@ -195,47 +198,71 @@ class OverviewView:
         self._paint_add_tile(painter, self.tiles[-1])
         for tile, box in zip(self.tiles, boxes):
             state = self.app.sessions[box.name].state
+            self._paint_card(painter, tile, state)
             if tile.index in self._empty:
                 self._paint_empty(painter, tile)
-            self._paint_ring(painter, tile, state)
             self._paint_caption(painter, tile, box, state)
 
-    def _paint_ring(self, painter, tile, state):
-        """A state-coloured ring around the tile, drawn OUTSIDE the thumb rect --
-        a thumbnail composites above everything this widget paints, so anything
-        inside it is invisible. Idle gets no ring: five glowing tiles say
-        nothing."""
+    def _paint_card(self, painter, tile, state):
+        """The frame a tile sits in.
+
+        Drawn on the CELL grown by a few pixels, so every edge of it falls
+        outside the thumbnail: a thumbnail composites above this widget, and a
+        frame on the boundary would be half eaten. The fill only ever shows in
+        the caption strip and the margin, which is the point -- it gives the
+        caption a surface to sit on rather than floating on the background.
+
+        Every tile is framed, idle included. An unframed tile has no edge of its
+        own and reads as a screenshot lying on the background; the state is said
+        in the border's colour and weight, and again in words underneath.
+        """
+        rect = self._rectf(tile.cell).adjusted(
+            -theme.CARD_INSET, -theme.CARD_INSET, theme.CARD_INSET, theme.CARD_INSET)
+        painter.setBrush(theme.qcolour(theme.PANEL))
         if state == session.IDLE:
-            return
-        painter.setPen(QPen(theme.state_qcolour(state), 2))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(
-            QRectF(tile.thumb.left - RING, tile.thumb.top - RING,
-                   (tile.thumb.right - tile.thumb.left) + RING * 2,
-                   (tile.thumb.bottom - tile.thumb.top) + RING * 2),
-            RADIUS, RADIUS,
-        )
+            painter.setPen(QPen(theme.qcolour(theme.EDGE_BRIGHT), 1))
+        else:
+            painter.setPen(QPen(theme.state_qcolour(state), 2))
+        painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
 
     def _paint_caption(self, painter, tile, box, state):
-        """name — state — url, on the strip under the tile."""
-        painter.setFont(self.font)
-        baseline = tile.label.top + 2 + self.metrics.ascent()
-        x = tile.label.left
+        """name · state · url, on the strip under the tile.
 
+        Three weights rather than three colours doing all the work: the name is
+        the only thing you scan for, the state is second, and the URL is there
+        when you look for it. At 30-60% of the source window a tile is a texture
+        rather than a document -- you can tell a form from a table but not read
+        a word -- so this strip is where the box actually says what it is.
+        """
+        top = tile.label.top + 5
+        x = tile.label.left + 8
+        right = tile.label.right - 8
+
+        painter.setFont(self.name_font)
+        baseline = top + self.name_metrics.ascent()
         painter.setPen(theme.qcolour(theme.TEXT))
         painter.drawText(x, baseline, box.name)
-        x += self.metrics.horizontalAdvance(box.name + "  ")
+        x += self.name_metrics.horizontalAdvance(box.name) + 10
 
-        label = f"● {state}"
+        # A painted dot rather than the "●" glyph: it lands on a whole pixel at
+        # any size, and the glyph's own side bearing was doing the spacing.
+        radius = 3.0
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(theme.state_qcolour(state))
+        painter.drawEllipse(QRectF(x, baseline - self.metrics.ascent() / 2 - radius,
+                                   radius * 2, radius * 2))
+        x += radius * 2 + 6
+
+        painter.setFont(self.font)
         painter.setPen(theme.state_qcolour(state))
-        painter.drawText(x, baseline, label)
-        x += self.metrics.horizontalAdvance(label + "  ")
+        painter.drawText(x, baseline, state)
+        x += self.metrics.horizontalAdvance(state) + 10
 
-        painter.setPen(theme.qcolour(theme.MUTED))
+        painter.setPen(theme.qcolour(theme.DIM))
         painter.drawText(x, baseline, clip(
             self.metrics.horizontalAdvance,
             short_url(self.app.url_of(box)),
-            tile.label.right - x,
+            right - x,
         ))
 
     def _paint_add_tile(self, painter, tile):
@@ -254,7 +281,7 @@ class OverviewView:
         pen.setDashPattern([4, 4])
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(self._rectf(tile.thumb), RADIUS, RADIUS)
+        painter.drawRoundedRect(self._rectf(tile.thumb), theme.RADIUS, theme.RADIUS)
         painter.setFont(self.body)
         painter.setPen(theme.qcolour(colour))
         painter.drawText(self._rectf(tile.thumb), Qt.AlignCenter, text)
@@ -274,7 +301,7 @@ class OverviewView:
         rect = self._rectf(tile.thumb)
         painter.setPen(QPen(theme.qcolour(theme.EMPTY_EDGE), 1))
         painter.setBrush(theme.qcolour(theme.EMPTY_BG))
-        painter.drawRoundedRect(rect, RADIUS, RADIUS)
+        painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
         painter.setFont(self.font)
         painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
         painter.drawText(rect, Qt.AlignCenter, "no window")

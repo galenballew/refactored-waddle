@@ -54,6 +54,12 @@ PUMP_MS = 50
 # purpose still works.
 ADD_DEBOUNCE_S = 0.4
 
+# Whether a tile shows the page or the whole browser window. On, a tile is page
+# pixels only; off, it wears Chromium's tab strip and toolbar the way it always
+# did. Here rather than in config.json because it is a decision about what the
+# dashboard looks like, not a knob for a run.
+CROP_TO_PAGE = True
+
 
 class Window(QWidget):
     """The top-level window. A QWidget rather than a QMainWindow: there is no
@@ -183,17 +189,35 @@ class App:
             self.handles[box.name] = handle
         return handle
 
+    def _crop(self, box):
+        """The part of a box worth mirroring: the page, not the browser.
+
+        Chromium's tab strip and toolbar are client area, so nothing DWM offers
+        strips them for free -- but the renderer has its own child window, and
+        `rcSource` can be pointed at it. Five tiles of pure page read as a
+        dashboard; five tiles each wearing their own tab strip and URL bar read
+        as five screenshots of a browser.
+
+        Recomputed rather than cached, because it is two Win32 calls and it
+        moves: a bookmarks bar appearing would otherwise crop the page in the
+        wrong place until the next restart. None means show the whole window.
+        """
+        if not CROP_TO_PAGE:
+            return None
+        return winfocus.page_rect(box.hwnd)
+
     def place(self, box, rect):
         """Show one box's live window in `rect` -- already in client pixels.
 
         One retry through re-registration, because a source that died and came
         back gets a new HWND and the old handle will never paint again.
         """
+        crop = self._crop(box)
         handle = self.handles.get(box.name)
-        if handle is not None and thumbs.place(handle, rect):
+        if handle is not None and thumbs.place(handle, rect, source=crop):
             return True
         handle = self._register(box)
-        return handle is not None and thumbs.place(handle, rect)
+        return handle is not None and thumbs.place(handle, rect, source=crop)
 
     def hide_thumbs(self):
         for handle in self.handles.values():
@@ -231,17 +255,27 @@ class App:
         return (origin_x + left, origin_y + top, right - left, bottom - top)
 
     def source_size(self):
-        """The source windows' own pixel size, in PHYSICAL pixels.
+        """The size of the region a tile mirrors, in PHYSICAL pixels.
+
+        The cropped page when cropping is on, because that -- and not the whole
+        window -- is what a tile actually shows: both the tile aspect and the
+        size past which scaling buys nothing follow from it. Get this wrong and
+        every page comes out stretched, since DWM scales the source region to
+        fill the destination rather than letterboxing it.
 
         Boxes all launch the same size, so the first one that answers speaks for
         all of them.
         """
         for box in self.manager.boxes:
             handle = self.handles.get(box.name)
-            if handle is not None:
-                size = thumbs.source_size(handle)
-                if size and size[0] and size[1]:
-                    return size
+            if handle is None:
+                continue
+            crop = self._crop(box)
+            if crop and crop[2] - crop[0] > 0 and crop[3] - crop[1] > 0:
+                return (crop[2] - crop[0], crop[3] - crop[1])
+            size = thumbs.source_size(handle)
+            if size and size[0] and size[1]:
+                return size
         return None
 
     def source_size_logical(self):

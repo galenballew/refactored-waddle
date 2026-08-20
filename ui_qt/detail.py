@@ -44,10 +44,9 @@ from .text import short_url
 Controls = namedtuple("Controls", "send stop input")
 NORMAL, DISABLED = "normal", "disabled"
 
-PAD = 12
-TRAJECTORY_W = 320
+PAD = 14
+TRAJECTORY_W = 340
 CHAT_LINES = 5
-RADIUS = 4
 EMPTY_CHAT = ("No task yet. Whatever you send is run by a scripted stand-in — "
               "there is no agent behind this box.")
 EMPTY_TRAJECTORY = "no activity yet"
@@ -145,7 +144,7 @@ class DetailView:
         column.setContentsMargins(10, 10, 10, 10)
         column.setSpacing(4)
         heading = QLabel("TRAJECTORY")
-        heading.setObjectName("muted")
+        heading.setObjectName("section")
         column.addWidget(heading)
         self.trajectory = self._text(self.small)
         column.addWidget(self.trajectory, 1)
@@ -175,6 +174,7 @@ class DetailView:
         self.entry.returnPressed.connect(self.send)
         row.addWidget(self.entry, 1)
         self.send_button = QPushButton("Send")
+        self.send_button.setObjectName("primary")
         self.send_button.clicked.connect(self.send)
         row.addWidget(self.send_button)
         self.stop_button = QPushButton("Stop")
@@ -272,12 +272,19 @@ class DetailView:
         return ""
 
     def relayout(self):
-        self.viewport = layout.viewport_rect(
-            self.canvas.width(),
-            self.canvas.height(),
+        # Laid out inside a margin the width of the frame, then shifted back
+        # into the middle of it. Without that the mirror fills the canvas edge
+        # to edge and its frame -- which has to sit outside the thumbnail, or be
+        # composited over -- is clipped away on three sides.
+        inset = theme.CARD_INSET
+        rect = layout.viewport_rect(
+            self.canvas.width() - inset * 2,
+            self.canvas.height() - inset * 2,
             aspect=self.app.aspect(),
             max_thumb=self.app.source_size_logical(),
         )
+        self.viewport = layout.Rect(rect.left + inset, rect.top + inset,
+                                    rect.right + inset, rect.bottom + inset)
         self.draw()
 
     def draw(self):
@@ -291,17 +298,28 @@ class DetailView:
 
     def paint(self, painter):
         painter.fillRect(self.canvas.rect(), theme.qcolour(theme.BG))
-        if self.box is None or not self._empty:
+        if self.box is None:
             return
         rect = QRectF(self.viewport.left, self.viewport.top,
                       self.viewport.right - self.viewport.left,
                       self.viewport.bottom - self.viewport.top)
-        painter.setPen(QPen(theme.qcolour(theme.EMPTY_EDGE), 1))
-        painter.setBrush(theme.qcolour(theme.EMPTY_BG))
-        painter.drawRoundedRect(rect, RADIUS, RADIUS)
-        painter.setFont(self.font)
-        painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
-        painter.drawText(rect, Qt.AlignCenter, "no window")
+        if self._empty:
+            painter.setPen(QPen(theme.qcolour(theme.EMPTY_EDGE), 1))
+            painter.setBrush(theme.qcolour(theme.EMPTY_BG))
+            painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
+            painter.setFont(self.font)
+            painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
+            painter.drawText(rect, Qt.AlignCenter, "no window")
+            return
+        # The same frame a tile gets, outside the mirror for the same reason: a
+        # thumbnail composites above this widget, so a border on the boundary
+        # would be half eaten by it.
+        painter.setPen(QPen(theme.qcolour(theme.EDGE), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(
+            rect.adjusted(-theme.CARD_INSET, -theme.CARD_INSET,
+                          theme.CARD_INSET, theme.CARD_INSET),
+            theme.RADIUS, theme.RADIUS)
 
     # -- inspection ---------------------------------------------------------
     #

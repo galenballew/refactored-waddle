@@ -115,8 +115,15 @@ def source_size(handle):
     return size.cx, size.cy
 
 
-def place(handle, rect, visible=True, opacity=255):
-    """Move/show/hide a thumbnail. Non-zero return means the source died."""
+def place(handle, rect, visible=True, opacity=255, source=None):
+    """Move/show/hide a thumbnail. False means the source died.
+
+    `source` is an optional region of the source window, in its client
+    coordinates, to show instead of all of it -- which is how the browser's tab
+    strip and toolbar are kept out of a tile, since `fSourceClientAreaOnly` does
+    not strip them. DWM scales that region to fill `rect`, so the two must agree
+    about aspect or the page comes out stretched.
+    """
     props = DWM_THUMBNAIL_PROPERTIES()
     props.dwFlags = (
         DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY
@@ -125,6 +132,9 @@ def place(handle, rect, visible=True, opacity=255):
     props.opacity = opacity
     props.fVisible = bool(visible)
     props.fSourceClientAreaOnly = True
+    if source is not None:
+        props.dwFlags |= DWM_TNP_RECTSOURCE
+        props.rcSource = wintypes.RECT(*source)
     return dwm.DwmUpdateThumbnailProperties(handle, ctypes.byref(props)) == S_OK
 
 
