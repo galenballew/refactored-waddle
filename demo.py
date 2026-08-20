@@ -61,7 +61,7 @@ import session as session_model
 import thumbs
 from agents import Agent
 from boxes import BoxManager, load_config
-from dashboard import app_class
+from ui.app import App
 
 user32 = ctypes.windll.user32
 
@@ -158,11 +158,10 @@ def reachable(url, timeout=4.0):
         return False
 
 
-# Where things are on screen is the views' business now -- `tile_centre` and
-# `control_centre` on each of them, in physical pixels. This file used to walk
-# the widget tree comparing button labels, which meant the director knew what
-# the dashboard was built out of. It no longer does, and that is what lets the
-# same script drive either toolkit.
+# Where things are on screen is the views' business: `tile_centre` and
+# `control_centre` on each of them, answering in physical pixels because that is
+# what SetCursorPos wants. This file does not know what the dashboard is built
+# out of, which is the only reason a toolkit change did not rewrite it.
 
 
 # -- the real keyboard -----------------------------------------------------
@@ -601,7 +600,7 @@ def main():
     if len(manager.boxes) < 5:
         print("demo: this is choreographed for the five boxes in config.json.")
         return 2
-    app = app_class()(manager)
+    app = App(manager)
     print("demo: recording can start now.\n")
     try:
         Director(app, pace).run(build_script(claude))

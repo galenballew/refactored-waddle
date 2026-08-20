@@ -1,24 +1,33 @@
 """One palette, one place.
 
-ttk's native Windows themes ignore most colour options -- a themed frame stays
-system grey no matter what you configure -- so this switches to "clam", which
-does not. Anything that has to be an exact colour and stay that colour (the
-transcript, the input box) is a classic tk widget rather than a ttk one, for the
-same reason.
+Dark, low-chroma, and deliberately quiet: five live browsers are already the
+loudest thing on the screen, and every colour the chrome spends competes with
+them. So the greys are near-neutral with a trace of blue, the accent appears
+only on things you can act on, and saturation is reserved almost entirely for
+the state vocabulary.
+
+The one rule the design cannot argue with: a DWM thumbnail composites above
+everything this app paints, so all of it -- frames, captions, shadows -- lives
+outside the rectangle a tile occupies. That is why tiles are framed rather than
+overlaid, and why there is no hover scrim anywhere.
+
+None of Tk's escape hatches are needed. A Qt stylesheet reaches every widget,
+themed or not, so there is no "use a classic widget to make the colour stick"
+rule to remember and no theme to switch away from first.
 """
 
-import tkinter.font as tkfont
-from tkinter import ttk
+from PySide6.QtGui import QColor, QFont
 
 import session
 
-BG = "#141414"          # the window itself
-PANEL = "#1c1c1c"       # chat and trajectory panels
-FIELD = "#242424"       # inputs and buttons
-EDGE = "#2f2f2f"        # panel and tile borders
-TEXT = "#f0f0f0"
-MUTED = "#8a8a8a"
-DIM = "#5f5f5f"
+BG = "#0f0f12"          # the window itself
+PANEL = "#17171c"       # cards, chat and trajectory panels
+FIELD = "#20202a"       # inputs and buttons
+EDGE = "#2a2a33"        # panel and tile borders
+EDGE_BRIGHT = "#3a3a46"  # a border that wants noticing
+TEXT = "#eceef2"
+MUTED = "#8b8b98"
+DIM = "#5a5a66"
 ACCENT = "#6aa9e0"
 
 # A tile with no window behind it. Red enough to read as broken at a glance.
@@ -32,60 +41,132 @@ AGENT = "#8fc7a1"       # who is speaking in a transcript, when it is not you
 # states that want you -- needs input and failed -- are the warm ones. Never the
 # only signal: every state is spelled out in words next to its colour.
 STATE = {
-    session.IDLE: "#5f5f5f",
+    session.IDLE: "#6a6a78",
     session.WORKING: "#6aa9e0",
     session.NEEDS_INPUT: "#e8b339",
     session.DONE: "#6cc08b",
     session.FAILED: "#d96a6a",
 }
 
+FAMILY = "Segoe UI"
+MONO = "Consolas"
+
+# Geometry the painted parts share with the styled parts, so a card and a panel
+# are the same shape.
+RADIUS = 7
+CARD_INSET = 4   # how far a tile's frame sits outside the thumbnail
+
 
 def state_colour(state):
     return STATE.get(state, MUTED)
 
-FAMILY = "Segoe UI"
-MONO = "Consolas"
+
+def qcolour(name):
+    return QColor(name)
+
+
+def state_qcolour(state):
+    return QColor(state_colour(state))
 
 
 def fonts():
-    """Fonts for canvas text, which cannot use ttk styles."""
+    """Fonts for painted text, which cannot be styled by QSS."""
+    name = QFont(FAMILY, 10)
+    name.setWeight(QFont.DemiBold)
     return {
-        "body": tkfont.Font(family=FAMILY, size=10),
-        "small": tkfont.Font(family=FAMILY, size=9),
-        "head": tkfont.Font(family=FAMILY, size=13, weight="bold"),
+        "body": QFont(FAMILY, 10),
+        "small": QFont(FAMILY, 9),
+        "name": name,
+        "head": QFont(FAMILY, 13, QFont.Bold),
     }
 
 
-def apply(root):
-    root.configure(bg=BG)
-    style = ttk.Style(root)
-    style.theme_use("clam")
+STYLESHEET = f"""
+QWidget {{
+    background: {BG};
+    color: {TEXT};
+    font-family: "{FAMILY}";
+    font-size: 10pt;
+}}
+QLabel {{ background: transparent; }}
+QLabel#head {{ font-size: 13pt; font-weight: 600; }}
+QLabel#muted {{ color: {MUTED}; font-size: 9pt; }}
+QLabel#section {{
+    color: {DIM};
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+}}
 
-    style.configure(".", background=BG, foreground=TEXT, font=(FAMILY, 10),
-                    borderwidth=0, focuscolor=BG)
-    style.configure("TFrame", background=BG)
-    style.configure("Panel.TFrame", background=PANEL)
-    style.configure("TLabel", background=BG, foreground=TEXT)
-    style.configure("Panel.TLabel", background=PANEL, foreground=TEXT)
-    style.configure("Muted.TLabel", background=BG, foreground=MUTED, font=(FAMILY, 9))
-    style.configure("PanelMuted.TLabel", background=PANEL, foreground=MUTED,
-                    font=(FAMILY, 9))
-    style.configure("Head.TLabel", background=BG, foreground=TEXT,
-                    font=(FAMILY, 13, "bold"))
-    style.configure("TButton", background=FIELD, foreground=TEXT, padding=(12, 5),
-                    borderwidth=0)
-    # clam draws a scrollbar out of several colours, and the ones left at their
-    # defaults are what make it read as a light widget on a dark panel.
-    style.configure("Vertical.TScrollbar", background=FIELD, troughcolor=PANEL,
-                    bordercolor=PANEL, arrowcolor=MUTED, borderwidth=0, relief="flat",
-                    lightcolor=FIELD, darkcolor=FIELD, gripcount=0)
-    style.map("Vertical.TScrollbar",
-              background=[("active", "#3a3a3a"), ("disabled", PANEL)],
-              arrowcolor=[("disabled", PANEL)])
-    style.map(
-        "TButton",
-        background=[("pressed", "#3a3a3a"), ("active", "#2e2e2e"),
-                    ("disabled", "#1e1e1e")],
-        foreground=[("disabled", DIM)],
-    )
-    return style
+QFrame#panel {{
+    background: {PANEL};
+    border: 1px solid {EDGE};
+    border-radius: {RADIUS}px;
+}}
+
+QPushButton {{
+    background: {FIELD};
+    color: {TEXT};
+    border: 1px solid {EDGE};
+    border-radius: {RADIUS - 2}px;
+    padding: 7px 15px;
+}}
+QPushButton:hover {{ background: #2a2a36; border-color: {EDGE_BRIGHT}; }}
+QPushButton:pressed {{ background: #33333f; }}
+QPushButton:disabled {{
+    background: transparent;
+    color: {DIM};
+    border-color: {EDGE};
+}}
+QPushButton#primary {{
+    background: {ACCENT};
+    color: #0d1116;
+    border-color: {ACCENT};
+    font-weight: 600;
+}}
+QPushButton#primary:hover {{ background: #7cb6e8; border-color: #7cb6e8; }}
+QPushButton#primary:disabled {{
+    background: transparent;
+    color: {DIM};
+    border-color: {EDGE};
+}}
+
+QTextEdit {{
+    background: transparent;
+    color: {TEXT};
+    border: none;
+    selection-background-color: {ACCENT};
+    selection-color: #0d1116;
+}}
+QLineEdit {{
+    background: {FIELD};
+    color: {TEXT};
+    border: 1px solid {EDGE};
+    border-radius: {RADIUS - 2}px;
+    padding: 7px 10px;
+}}
+QLineEdit:focus {{ border-color: {ACCENT}; }}
+QLineEdit:disabled {{
+    background: transparent;
+    color: {DIM};
+    border-color: {EDGE};
+}}
+
+QScrollBar:vertical {{
+    background: transparent;
+    width: 10px;
+    margin: 2px 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {EDGE_BRIGHT};
+    border-radius: 3px;
+    min-height: 28px;
+}}
+QScrollBar::handle:vertical:hover {{ background: #4a4a58; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+"""
+
+
+def apply(window):
+    window.setStyleSheet(STYLESHEET)

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A multibox window manager for browser sandboxes: run N headed Chromium windows at
 once, see them all as live tiles in one dashboard, and open any one of them to
-work on it. Python + Playwright (sync API) + Tkinter + ctypes. Windows only.
+work on it. Python + Playwright (sync API) + PySide6 + ctypes. Windows only.
 
 The dashboard has two views: an **overview** of every box as a live tile, and a
 **detail view** — double-click a tile — showing one box large, with a chat panel
@@ -43,7 +43,7 @@ while editing. `verify.py [url]` is the one that proves the window management:
 real windows, pixels read off the screen, so it is slow (~60s), needs a desktop
 session, steals focus, and covers part of the screen while it runs.
 
-Setup: `python -m venv .venv`, then `pip install playwright` and
+Setup: `python -m venv .venv`, then `pip install playwright PySide6` and
 `playwright install chromium` inside it. The system `python` on this machine is 3.9
 and will not work — use the venv (3.12).
 
@@ -63,25 +63,26 @@ agent_host.py the child, one process per box. Three agents share one state
               StandInAgent (no browser at all, for the fast checks)
 pipes.py      ctypes/kernel32: reading a pipe without blocking, and telling an
               empty one from a broken one. Used by both ends
-ui/           only package that touches Tkinter
+ui/           only package that touches Qt
   app.py      the window: the two views, the thumbnail handles, both timers, and
               the two triggers that send a summoned box back to its slot
   overview.py the tile grid. Double-click opens a box
   detail.py   one box: live view, trajectory panel, chat
-  theme.py    the palette, and the ttk styling that makes it stick
-  text.py     URL captions
+  theme.py    the palette, the fonts, and the stylesheet
+  text.py     URL captions. `clip` takes a measuring function, not a font,
+              so nothing here knows which toolkit is drawing
 thumbs.py     ctypes/dwmapi: live window thumbnails
 winfocus.py   ctypes/user32: match windows to PIDs, force foreground, move
               windows, and drop them from the taskbar and Alt-Tab
 layout.py     pure geometry — grid rects, the detail viewport, hit testing,
-              park/summon/cascade rects. No Tk, no Win32. `columns="auto"` picks
+              park/summon/cascade rects. No Qt, no Win32. `columns="auto"` picks
               the count that maximises tile area; in a tall narrow window that is
               usually 1, and 2 wastes two thirds of the panel.
 smoke.py      the fast checks: dashboard plus agent children, no browsers
 verify.py     the eleven proof checks
 ```
 
-Panel geometry inside a view is Tk's packer, not `layout.py`. Only rectangles a
+Panel geometry inside a view is Qt's layouts, not `layout.py`. Only rectangles a
 thumbnail goes into are computed as pure geometry, because those are the ones
 with a correctness constraint worth testing.
 
@@ -89,9 +90,9 @@ with a correctness constraint worth testing.
 
 - **One Playwright `launch()` per box.** Each box needs its own real OS window, so no
   shared page or context objects, and no multiple pages in one browser.
-- **Single-threaded, and it stays that way.** Playwright's sync API and Tkinter's
-  `mainloop` both want to own the calling thread. This survives a live dashboard only
-  because DWM composites the tiles out-of-process — no capture work ever runs on the Tk
+- **Single-threaded, and it stays that way.** Playwright's sync API and Qt's
+  `exec()` both want to own the calling thread. This survives a live dashboard only
+  because DWM composites the tiles out-of-process — no capture work ever runs on the UI
   thread. A full tick — re-assert the parked layout, then redraw — measures ~2.5ms.
   The agent children do not change this: they are separate processes, and reading
   from them never blocks. If you ever move tiles to `page.screenshot()`, or give a
@@ -124,7 +125,7 @@ with a correctness constraint worth testing.
   agent moves a page, the dashboard's own `box.page.url` still reads about:blank
   while `page.evaluate("location.href")` gives the truth. Captions therefore use
   `session.url`, which the child reports, not `box.page.url`. Do not "fix" this by
-  evaluating on the Tk thread once per tick per box.
+  evaluating on the UI thread once per tick per box.
 - **The model loop lives behind the same seam as everything else.** `ModelAgent`
   is one queued action per model turn, so cancel is noticed between turns — never
   during one, because a model call blocks that process for as long as it takes.
@@ -173,9 +174,9 @@ with a correctness constraint worth testing.
 - **Exactly one box is summoned at a time, and the dashboard decides when.** Summon
   is now a secondary path: "Take control" in the detail view, for the times a
   mirror is not enough, rather than the main way to use a box. Two triggers send it
-  back, both in `ui/app.py`: Tk's `<FocusIn>` for the user coming
+  back, both in `ui/app.py`: Qt's `ActivationChange` for the user coming
   back to the dashboard, and a per-tick backstop for focus going to a third app,
-  which Tk never hears about. The backstop asks whether the foreground window's
+  which no toolkit hears about. The backstop asks whether the foreground window's
   **PID** is the box's, not whether its HWND is — Chromium puts `<select>` popups,
   the print dialog and download bubbles in their own top-level windows, and an HWND
   test would park the box out from under someone mid-click.
@@ -190,12 +191,29 @@ with a correctness constraint worth testing.
   registered.
 - **Window placement uses `SetWindowPos`, not Chromium flags.** `--window-position` is
   in DIPs and would need DPI conversion; HWND coordinates are already physical pixels.
-- **DPI awareness must be set before Tk is created** (`thumbs.set_dpi_awareness()` in
-  `main.py`). With it on, Tk pixel units and DWM client coordinates are both physical
-  pixels and no conversion is needed anywhere. Dev machine runs at 150%. That
-  equivalence is a property of **Tk**, not of the call: a toolkit that lays out in
-  logical units has to scale where it meets `rcDestination`, and `App.client_offset()`
-  is the one place that would happen.
+- **DPI awareness must be set before Qt starts** (`thumbs.set_dpi_awareness()` in
+  `main.py`), or Qt sets its own and every rectangle means something else. Dev
+  machine runs at 150%.
+- **Qt lays out in logical pixels; every Win32 API here speaks physical.** This is
+  the sharpest edge in the codebase and it has no compiler to catch it.
+  `devicePixelRatioF()` is 1.5 here. Exactly two functions convert —
+  `App.thumb_rect` for `rcDestination` and `App.screen_rect` for anything that
+  will be BitBlt'd or fed to `SetCursorPos` — and the views never see a ratio.
+  `thumb_rect` uses `mapTo(window, ...)`, not `mapToGlobal`: the window's origin
+  *is* the client origin, so there is no screen origin to get wrong when a second
+  monitor sits at a negative offset.
+- **`source_size()` is physical and `layout` runs in logical, so views pass
+  `source_size_logical()`.** Handing `layout` the raw source size lets a tile be
+  1.5x larger than the window it mirrors, which DWM paints partially and in
+  silence. Check [7] only catches that on a display where the cap actually binds,
+  and this machine is not one — tiles top out at 1226x654 against a 1440x770 page
+  — so smoke check [14] pins the arithmetic in both directions instead.
+- **Never change a Qt window flag to raise, lower or restyle the window.** Qt
+  destroys and recreates the native window when a flag changes, and every DWM
+  thumbnail is registered against that HWND: they would all go blank at once, with
+  nothing in any log. `App.set_topmost` goes through `winfocus.set_topmost`, which
+  is a `SetWindowPos` on the handle. `showMaximized`/`showNormal` are safe — they
+  are `ShowWindow`, not a flag change.
 - **Ephemeral profiles.** No persistent user-data-dir, no isolation guarantees, no
   cross-box checks. Do not describe this as a security boundary.
 - **The fleet changes at runtime.** `config.json` is only the starting list: "+ Add
@@ -205,7 +223,7 @@ with a correctness constraint worth testing.
 - **Adds must stay serialized, and the UI is what guarantees it.** PID attribution
   credits every `chrome.exe` that appeared during a launch to the box being
   launched, so two overlapping launches would mix up two boxes' processes. A
-  launch blocks the Tk thread, which means clicks queue up in the OS and arrive
+  launch blocks the UI thread, which means clicks queue up in the OS and arrive
   the instant it finishes — hence `ADD_DEBOUNCE_S` in `ui/app.py`, which drops
   them. Removing that guard reintroduces a bug that looks like a window-management
   failure, not a click-handling one.
@@ -218,12 +236,12 @@ with a correctness constraint worth testing.
 
 Learned the hard way; all of these will silently produce a blank or wrong tile.
 
-- The destination must be a **top-level** window. Tk's `winfo_id()` is a child and
-  returns `E_INVALIDARG`; pass it through `thumbs.top_level()`, which walks to `GA_ROOT`.
-- `rcDestination` is in the destination window's **client** coordinates. `thumbs`
-  gives you that origin (`client_origin()`); turning a widget's position into an
-  offset from it is `App.client_offset()`, in `ui/`, because only the toolkit knows
-  where its widgets are or what units they answer in.
+- The destination must be a **top-level** window. Qt's `winId()` on a top-level
+  widget already is one, so `thumbs.top_level()` is a no-op here; it stays because
+  the rule is real and the next toolkit may not be so obliging. (Tk's `winfo_id()`
+  was a child, and returned `E_INVALIDARG`.)
+- `rcDestination` is in the destination window's **client** coordinates, in
+  **physical** pixels. `App.thumb_rect` is the only thing that builds one.
 - Thumbnails always composite **above** the destination's own content. Anything drawn
   under a tile is invisible, so labels go outside the tile rect.
 - A **minimized or virtual-desktop-cloaked** source renders nothing. Occluded is fine,
@@ -246,8 +264,17 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
 - **A thumbnail composites above the whole destination window, not just the widget
   it was placed over.** Anything overlapping a thumbnail rect is invisible, so the
   detail view's chat and trajectory panels must not overlap the viewport.
-- `fSourceClientAreaOnly` does **not** strip browser chrome; Chromium's toolbar is
-  client area. Cropping to page pixels only would need `rcSource`.
+- `fSourceClientAreaOnly` does **not** strip browser chrome; Chromium's toolbar and
+  tab strip are client area. Tiles show page pixels only because `rcSource` is
+  pointed at the renderer's own child window — `winfocus.page_rect` finds
+  `Chrome_RenderWidgetHostHWND` and measures it rather than assuming a chrome
+  height (130px here at 150%, different with a bookmarks bar or at another zoom).
+  `CROP_TO_PAGE` in `ui/app.py` turns it off.
+- **A cropped source changes the aspect, and DWM stretches rather than
+  letterboxes.** `source_size()` therefore reports the *cropped* region, so the
+  tile aspect follows it (1.87, not 1.60). Report the whole window while cropping
+  the source and every page comes out subtly squashed — which looks like a font
+  problem, not a geometry one.
 - Unregister every handle on exit.
 
 ## Verification notes
@@ -280,13 +307,18 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
   word about its work is not evidence.
 - Checks that read pixels off tiles need the **overview** showing. Check [4] enters
   and leaves the detail view, so it puts the overview back before it returns.
-- **Neither `smoke.py` nor `verify.py` may touch a Tk widget.** They drive the app
-  through `App.update/set_topmost/set_maximized` and read the views through the
-  inspection methods on each (`canvas_size`, `jump_text`, `transcript_text`,
-  `trajectory_text`, `hint_text`, `controls`), and they ask for a double-click as
-  `overview.double_click(x, y)` rather than by faking an event object. A check
-  written against `cget()` or `widget["state"]` is a check about Tk, not about the
-  dashboard. `demo.py` is the exception and is still Tk all the way through.
+- **Nothing outside `ui/` may touch a Qt widget.** Not `smoke.py`, not
+  `verify.py`, not `demo.py`. They drive the app through
+  `App.update/set_topmost/set_maximized/flush/schedule/focus_window` and read the
+  views through the inspection methods on each — `canvas_size`, `jump_text`,
+  `transcript_text`, `trajectory_text`, `hint_text`, `entry_text`, `controls`,
+  `transcript_scroll`, `tile_centre`, `control_centre` — and they ask for a
+  double-click as `overview.double_click(x, y)` rather than by faking an event.
+  A check written against a widget's own API is a check about Qt, not about the
+  dashboard, and the Tk-to-Qt port cost roughly a day precisely because that rule
+  did not exist yet. `control_centre` is a lookup in a dict each view builds of
+  its own controls; `demo.py` used to walk the widget tree comparing button
+  labels.
 
 ## What this is not — do not add
 

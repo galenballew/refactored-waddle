@@ -1,27 +1,37 @@
 """The dashboard window: two views, one set of live thumbnails, two timers.
 
-It is still the only window the user ever sees. The boxes are parked off the
-desktop; this file owns the two triggers that send a summoned one back, and the
-thumbnail handles that make the parked ones visible.
+The Qt half of what `ui/app.py` does, and deliberately the same shape. What is
+genuinely different is written down here rather than left to be rediscovered:
 
-Views come and go, thumbnails do not. A DWM thumbnail is registered against a
-top-level window, and both views live inside the same top-level, so switching
-between them only moves the thumbnails -- nothing is re-registered, and no tile
-ever goes blank on a view change. Handles therefore belong here rather than to
-either view.
+  - **Qt lays out in logical units, DWM wants physical.** Tk with DPI awareness
+    on reports physical pixels, so the Tk dashboard never converts anything.
+    Qt does not, and `devicePixelRatioF()` is 1.5 on a 150% display. Every
+    conversion happens in `thumb_rect` and `screen_rect` and nowhere else; the
+    views work in Qt's own units throughout and never see a ratio.
+
+  - **`source_size()` is physical, and layout runs in logical.** Feeding the raw
+    source size to `layout` as `max_thumb` would let a tile be dpr times larger
+    than the window it mirrors, which DWM will not reliably paint -- the exact
+    silently-cropped failure check [7] exists for. `source_size_logical()` is
+    what the views pass.
+
+  - **Never change a window flag to raise the window.** Qt destroys and recreates
+    the native window when a flag changes, and every thumbnail is registered
+    against that HWND. `set_topmost` goes through `winfocus`, which is a
+    SetWindowPos on the handle and leaves it alone.
+
+Views come and go, thumbnails do not: both views live in the same top-level, so
+switching only moves the thumbnails and no tile ever goes blank on a view change.
 
 The two timers do unrelated jobs at unrelated rates. `refresh` is the layout
-tick: put wandering windows back, redraw captions, once a second. `pump` drains
-the agent children, fifty times a second, because a chat that answers on a
-one-second boundary reads as broken. Both are cheap, and neither blocks.
-
-Nothing in here captures pixels, and nothing in here waits on a pipe: the
-compositor draws the tiles out-of-process and `pipes.py` reads only what has
-already arrived. That is what keeps a single thread enough.
+tick, once a second. `pump` drains the agent children fifty times a second,
+because a chat that answers on a one-second boundary reads as broken.
 """
 
 import time
-import tkinter as tk
+
+from PySide6.QtCore import QEvent, QPoint, QTimer
+from PySide6.QtWidgets import QApplication, QStackedLayout, QWidget
 
 import layout
 import thumbs
@@ -44,6 +54,38 @@ PUMP_MS = 50
 # purpose still works.
 ADD_DEBOUNCE_S = 0.4
 
+# Whether a tile shows the page or the whole browser window. On, a tile is page
+# pixels only; off, it wears Chromium's tab strip and toolbar the way it always
+# did. Here rather than in config.json because it is a decision about what the
+# dashboard looks like, not a knob for a run.
+CROP_TO_PAGE = True
+
+
+class Window(QWidget):
+    """The top-level window. A QWidget rather than a QMainWindow: there is no
+    menu bar, status bar or dock to justify one, and a plain widget's (0, 0) is
+    the Win32 client origin, which is what `rcDestination` is measured from."""
+
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+
+    def changeEvent(self, event):
+        # Focus returning here means the user is done with whatever box was
+        # summoned. Fires for clicks into our own widgets too, which is
+        # harmless: parking an already-parked fleet is a no-op.
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+            self._app.manager.park_summoned()
+        super().changeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._app.relayout()
+
+    def closeEvent(self, event):
+        self._app.quit()
+        event.accept()
+
 
 class App:
     def __init__(self, manager):
@@ -55,39 +97,49 @@ class App:
         self.box = None  # the box being looked at, or None on the overview
         self.adding = False   # a launch is running on this thread right now
         self._added_at = 0.0
+        self._quitting = False
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
-        # One child process per box. What it runs is a stand-in; that it is a
-        # separate process, reached only by sending a line and draining a pipe,
-        # is real and is the point.
-        self.agents = {
-            box.name: self._spawn(box) for box in manager.boxes
-        }
+        # One child process per box. What it runs is decided by the config; that
+        # it is a separate process, reached only by sending a line and draining a
+        # pipe, is the part that matters.
+        self.agents = {box.name: self._spawn(box) for box in manager.boxes}
 
-        self.root = tk.Tk()
-        self.root.title("multibox")
+        self.qt = QApplication.instance() or QApplication([])
+        self.window = Window(self)
+        self.window.setWindowTitle("multibox")
         self.fonts = theme.fonts()
-        theme.apply(self.root)
-        self.root.protocol("WM_DELETE_WINDOW", self.quit)
-        # Focus returning here means the user is done with whatever box was
-        # summoned. Fires for clicks into our own widgets too, which is harmless:
-        # parking an already-parked fleet is a no-op.
-        self.root.bind("<FocusIn>", lambda _e: self.manager.park_summoned())
+        theme.apply(self.window)
 
-        rect = layout.centred_rect(winfocus.work_area(), self.dash.get("size", [1600, 1000]))
-        self.root.geometry(
-            f"{rect.right - rect.left}x{rect.bottom - rect.top}+{rect.left}+{rect.top}"
-        )
+        self.stack = QStackedLayout(self.window)
+        self.stack.setContentsMargins(0, 0, 0, 0)
 
         self.overview = OverviewView(self)
         self.detail = DetailView(self)
+        self.stack.addWidget(self.overview.frame)
+        self.stack.addWidget(self.detail.frame)
         self.view = None
 
-        self.root.update_idletasks()
-        self.root.update()
+        self.window.show()
+        # Physical pixels, like every other window this app places. Going through
+        # the HWND rather than Qt's setGeometry keeps `config.json`'s dashboard
+        # size meaning the same thing it means under Tk.
+        rect = layout.centred_rect(winfocus.work_area(),
+                                   self.dash.get("size", [1600, 1000]))
+        winfocus.move_window(int(self.window.winId()), rect.left, rect.top,
+                             rect.right - rect.left, rect.bottom - rect.top)
+        self.qt.processEvents()
+
         self.register_all()
         self.show_overview()
-        self.refresh()
-        self._pump_loop()
+        self.tick()
+
+        self._pump_timer = QTimer(self.window)
+        self._pump_timer.timeout.connect(self.pump)
+        self._pump_timer.start(PUMP_MS)
+
+        self._refresh_timer = QTimer(self.window)
+        self._refresh_timer.timeout.connect(self.tick)
+        self._refresh_timer.start(self.dash.get("refresh_ms", 1000))
 
     # -- views --------------------------------------------------------------
 
@@ -104,20 +156,25 @@ class App:
         if self.view is view:
             view.relayout()
             return
-        if self.view is not None:
-            self.view.hide()
         # The outgoing view leaves its thumbnails wherever it put them, and DWM
         # would happily keep compositing them over the new one.
         self.hide_thumbs()
         self.view = view
-        view.show()
-        self.root.update_idletasks()
+        self.stack.setCurrentWidget(view.frame)
+        self.qt.processEvents()
         view.relayout()
+
+    def relayout(self):
+        if self.view is not None:
+            self.view.relayout()
 
     # -- thumbnails ---------------------------------------------------------
 
     def register_all(self):
-        self.dest = thumbs.top_level(self.root.winfo_id())
+        # Qt's winId() is already the top-level handle; top_level() is a no-op
+        # here rather than the GA_ROOT walk Tk needs. Asking anyway keeps the
+        # rule in one place.
+        self.dest = thumbs.top_level(int(self.window.winId()))
         for box in self.manager.boxes:
             self._register(box)
 
@@ -132,46 +189,108 @@ class App:
             self.handles[box.name] = handle
         return handle
 
+    def _crop(self, box):
+        """The part of a box worth mirroring: the page, not the browser.
+
+        Chromium's tab strip and toolbar are client area, so nothing DWM offers
+        strips them for free -- but the renderer has its own child window, and
+        `rcSource` can be pointed at it. Five tiles of pure page read as a
+        dashboard; five tiles each wearing their own tab strip and URL bar read
+        as five screenshots of a browser.
+
+        Recomputed rather than cached, because it is two Win32 calls and it
+        moves: a bookmarks bar appearing would otherwise crop the page in the
+        wrong place until the next restart. None means show the whole window.
+        """
+        if not CROP_TO_PAGE:
+            return None
+        return winfocus.page_rect(box.hwnd)
+
     def place(self, box, rect):
-        """Show one box's live window in `rect` (client coordinates of the root).
+        """Show one box's live window in `rect` -- already in client pixels.
 
         One retry through re-registration, because a source that died and came
         back gets a new HWND and the old handle will never paint again.
         """
+        crop = self._crop(box)
         handle = self.handles.get(box.name)
-        if handle is not None and thumbs.place(handle, rect):
+        if handle is not None and thumbs.place(handle, rect, source=crop):
             return True
         handle = self._register(box)
-        return handle is not None and thumbs.place(handle, rect)
+        return handle is not None and thumbs.place(handle, rect, source=crop)
 
     def hide_thumbs(self):
         for handle in self.handles.values():
             thumbs.place(handle, (0, 0, 0, 0), visible=False)
 
-    def client_offset(self, widget):
-        """Where a widget sits inside the root's client area -- rcDestination units.
+    def dpr(self):
+        return self.window.devicePixelRatioF()
 
-        The one place the toolkit's coordinate system meets DWM's, and so the one
-        place a toolkit that lays out in logical rather than physical pixels would
-        have to scale. Tk needs no scaling because DPI awareness makes its units
-        physical already; that is a fact about Tk, not about thumbnails.
+    def thumb_rect(self, widget, rect):
+        """A rect in `widget`'s own coordinates -> `rcDestination` client pixels.
+
+        The one place Qt's units meet DWM's. `mapTo(window, ...)` rather than
+        `mapToGlobal` on purpose: it answers in the window's own coordinates,
+        whose origin is the client origin already, so there is no screen origin
+        to get wrong when a second monitor sits at a negative offset.
         """
         if not self.dest:
-            return (0, 0)
+            return (0, 0, 0, 0)
+        scale = self.dpr()
+        origin = widget.mapTo(self.window, QPoint(0, 0))
+        x, y = round(origin.x() * scale), round(origin.y() * scale)
+        return (x + round(rect[0] * scale), y + round(rect[1] * scale),
+                x + round(rect[2] * scale), y + round(rect[3] * scale))
+
+    def screen_rect(self, widget, rect):
+        """The same rect in physical SCREEN pixels, as (left, top, w, h).
+
+        What `verify.py` BitBlts. Built from the client rect plus the client
+        origin, so it inherits the multi-monitor safety above.
+        """
+        if not self.dest:
+            return (0, 0, 0, 0)
         origin_x, origin_y = thumbs.client_origin(self.dest)
-        return widget.winfo_rootx() - origin_x, widget.winfo_rooty() - origin_y
+        left, top, right, bottom = self.thumb_rect(widget, rect)
+        return (origin_x + left, origin_y + top, right - left, bottom - top)
 
     def source_size(self):
-        """The source windows' own pixel size: both the tile aspect and the size
-        past which scaling buys nothing. Boxes all launch the same size, so the
-        first one that answers speaks for all of them."""
+        """The size of the region a tile mirrors, in PHYSICAL pixels.
+
+        The cropped page when cropping is on, because that -- and not the whole
+        window -- is what a tile actually shows: both the tile aspect and the
+        size past which scaling buys nothing follow from it. Get this wrong and
+        every page comes out stretched, since DWM scales the source region to
+        fill the destination rather than letterboxing it.
+
+        Boxes all launch the same size, so the first one that answers speaks for
+        all of them.
+        """
         for box in self.manager.boxes:
             handle = self.handles.get(box.name)
-            if handle is not None:
-                size = thumbs.source_size(handle)
-                if size and size[0] and size[1]:
-                    return size
+            if handle is None:
+                continue
+            crop = self._crop(box)
+            if crop and crop[2] - crop[0] > 0 and crop[3] - crop[1] > 0:
+                return (crop[2] - crop[0], crop[3] - crop[1])
+            size = thumbs.source_size(handle)
+            if size and size[0] and size[1]:
+                return size
         return None
+
+    def source_size_logical(self):
+        """The same size in the units the views lay out in.
+
+        `layout`'s `max_thumb` cap compares against tile sizes, and those are
+        logical here -- so handing it physical pixels would permit a tile dpr
+        times larger than its source, which DWM paints only partially and
+        without complaining.
+        """
+        size = self.source_size()
+        if not size:
+            return None
+        scale = self.dpr()
+        return (int(size[0] / scale), int(size[1] / scale))
 
     def aspect(self):
         size = self.source_size()
@@ -276,33 +395,23 @@ class App:
             counts[session.state] = counts.get(session.state, 0) + 1
         return counts
 
-    def pump(self):
-        """Drain every child into its session, and redraw if anything moved.
+    # -- the children -------------------------------------------------------
 
-        Its own timer, much faster than the layout tick: chat that updates once a
-        second reads as a broken app, and speeding the layout tick up to match
-        would run the desktop-repair work fifty times as often for nothing.
-        Draining is cheap -- a PeekNamedPipe per child, and nothing else when
-        there is nothing waiting.
-        """
-        # Every child, every time: `any()` over a generator would stop draining
-        # at the first one with news.
+    def pump(self):
+        """Drain every child. Never blocks: `pipes.py` reads only what has
+        already arrived."""
         moved = [agent.pump() for agent in self.agents.values()]
         if any(moved) and self.view is not None:
             self.view.sync()
-
-    def _pump_loop(self):
-        self.pump()
-        self.root.after(PUMP_MS, self._pump_loop)
 
     # -- the tick -----------------------------------------------------------
 
     def _settle(self):
         """Keep the desktop honest between clicks.
 
-        The <FocusIn> binding covers the user coming back here; this covers focus
-        going somewhere that is neither the dashboard nor the summoned box, which
-        Tk never hears about. Then everything else is pushed back into its slot.
+        Activation covers the user coming back here; this covers focus going
+        somewhere that is neither the dashboard nor the summoned box, which no
+        toolkit hears about. Then everything else is pushed back into its slot.
         """
         box = self.manager.summoned
         if box is not None and not self.manager.holds_foreground(box):
@@ -310,7 +419,8 @@ class App:
         self.manager.reassert_layout()
 
     def draw(self):
-        self.view.draw()
+        if self.view is not None:
+            self.view.draw()
 
     def tick(self):
         """One full refresh: fix the desktop, then redraw. This is what the
@@ -318,66 +428,77 @@ class App:
         self._settle()
         self.draw()
 
-    def refresh(self):
-        self.tick()
-        self.root.after(self.dash.get("refresh_ms", 1000), self.refresh)
-
     # -- the window ---------------------------------------------------------
     #
-    # Everything outside this class asks for window behaviour through these three
-    # rather than reaching for `self.root`, so the checks in smoke.py and
-    # verify.py are written against the dashboard and not against Tk.
+    # Everything outside this class asks for window behaviour through these
+    # three rather than reaching for `self.window`, so the checks in smoke.py and
+    # verify.py are written against the dashboard and not against Qt.
 
     def update(self):
         """Process whatever events are already pending, once. Never blocks."""
-        self.root.update()
+        self.qt.processEvents()
 
     def flush(self):
         """Let pending layout and painting happen before something is measured."""
-        self.root.update_idletasks()
+        self.qt.processEvents()
 
     def schedule(self, ms, function, *args):
         """Run `function` on this thread after `ms`. The director's clock."""
-        self.root.after(ms, function, *args)
+        QTimer.singleShot(ms, lambda: function(*args))
 
     def focus_window(self):
         """Take the keyboard, as clicking the dashboard would."""
-        self.root.focus_force()
+        self.window.activateWindow()
+        self.window.raise_()
 
     def centre_of(self, widget):
         """A widget's middle in physical screen pixels, for SetCursorPos."""
-        return (widget.winfo_rootx() + widget.winfo_width() // 2,
-                widget.winfo_rooty() + widget.winfo_height() // 2)
+        left, top, width, height = self.screen_rect(
+            widget, (0, 0, widget.width(), widget.height()))
+        return (left + width // 2, top + height // 2)
 
     def set_topmost(self, on):
         """Float the dashboard above other windows, or stop.
 
-        verify.py needs this: it BitBlts the screen to prove tiles are live, and
-        without it would sample whatever window happens to be in front and read
-        plausible-looking garbage.
+        Through the HWND, never through a Qt window flag: changing a flag
+        recreates the native window and every thumbnail is registered against
+        it. verify.py needs this at all because it BitBlts the screen, and would
+        otherwise sample whatever window happens to be in front.
         """
-        self.root.attributes("-topmost", bool(on))
+        winfocus.set_topmost(int(self.window.winId()), on)
         if on:
-            self.root.lift()
+            self.window.raise_()
 
     def set_maximized(self, on):
         """Fill the work area, or go back.
 
         Check [7] resizes because DWM will not reliably paint a thumbnail larger
         than its source, and that failure is invisible at a small window size.
+        ShowWindow, not a flag change, so the HWND survives.
         """
-        self.root.state("zoomed" if on else "normal")
+        if on:
+            self.window.showMaximized()
+        else:
+            self.window.showNormal()
 
     def quit(self):
         # Children first: they exit on their own when the pipe closes, but
         # waiting for them here is what makes "closed the dashboard" mean
         # "nothing of ours is still running".
+        if self._quitting:
+            return
+        self._quitting = True
+        for timer in (getattr(self, "_pump_timer", None),
+                      getattr(self, "_refresh_timer", None)):
+            if timer is not None:
+                timer.stop()
         for agent in self.agents.values():
             agent.close()
         for handle in self.handles.values():
             thumbs.unregister(handle)
         self.handles.clear()
-        self.root.destroy()
+        self.window.close()
+        self.qt.processEvents()
 
     def run(self):
-        self.root.mainloop()
+        self.qt.exec()

@@ -1,4 +1,8 @@
-"""Turning URLs into captions. Shared by both views."""
+"""Turning URLs into captions. Shared by both views.
+
+Same as `ui/text.py` except that `clip` is handed a measuring function rather
+than a Tk font, so nothing here knows which toolkit is drawing.
+"""
 
 
 def short_url(url):
@@ -18,10 +22,14 @@ def short_url(url):
     return url
 
 
-def clip(font, text, max_px):
-    """Truncate to fit, or a caption bleeds into the next tile."""
-    if max_px <= 0 or font.measure(text) <= max_px:
+def clip(measure, text, max_px):
+    """Truncate to fit, or a caption bleeds into the next tile.
+
+    `measure` turns a string into its width. Tk spells that `font.measure` and
+    Qt spells it `QFontMetrics.horizontalAdvance`; this module does not care.
+    """
+    if max_px <= 0 or measure(text) <= max_px:
         return text
-    while text and font.measure(text + "…") > max_px:
+    while text and measure(text + "…") > max_px:
         text = text[:-1]
     return text + "…"

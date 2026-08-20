@@ -35,7 +35,7 @@ thumbs.set_dpi_awareness()
 
 from boxes import load_config, next_box_name  # noqa: E402
 from main import agent_from  # noqa: E402
-from dashboard import app_class  # noqa: E402
+from ui.app import App  # noqa: E402
 
 FAILURES = []
 
@@ -627,7 +627,7 @@ def check_director(app, manager):
 
 def main():
     manager = FakeManager(load_config())
-    app = app_class()(manager)
+    app = App(manager)
     app.update()
     try:
         check_views(app, manager)
