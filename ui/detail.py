@@ -274,10 +274,6 @@ class DetailView:
         self.chip.setText(f"● {state}")
         self.chip.setStyleSheet(
             f"color: {theme.state_colour(state)}; background: transparent;")
-        # The frame around the mirror follows the same crossfade the tile's
-        # does, so the two views move in one vocabulary rather than two.
-        self.canvas.update()
-
         # Input is refused while a box is working, because the agent would drop
         # it: better a disabled box and a reason than a message that vanishes.
         working = state == session_model.WORKING
