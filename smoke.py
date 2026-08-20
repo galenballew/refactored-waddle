@@ -35,7 +35,7 @@ thumbs.set_dpi_awareness()
 
 from boxes import load_config, next_box_name  # noqa: E402
 from main import agent_from  # noqa: E402
-from ui.app import App  # noqa: E402
+from dashboard import app_class  # noqa: E402
 
 FAILURES = []
 
@@ -561,10 +561,32 @@ def check_geometry():
     check("the grid gives up rather than drawing specks",
           layout.tile_rects(240, 160, 12, aspect=1.6) == [])
 
+    # A cap in the wrong units does not cap. Qt lays out in logical pixels and
+    # DWM measures the source in physical ones, so handing `layout` the raw
+    # source size would permit a thumbnail dpr times too large -- which DWM
+    # paints partially and without complaining. verify.py's check [7] only
+    # catches that on a display big enough for the cap to bind, and this machine
+    # is not one, so the arithmetic is pinned here instead. See
+    # `App.source_size_logical`.
+    source, dpr = (1440, 900), 1.5
+    capped = layout.tile_rects(6000, 4000, 6, aspect=1.6,
+                               max_thumb=(int(source[0] / dpr), int(source[1] / dpr)))
+    thumb = capped[0].thumb
+    check("a logical cap keeps the thumbnail inside its source",
+          round((thumb.right - thumb.left) * dpr) <= source[0]
+          and round((thumb.bottom - thumb.top) * dpr) <= source[1],
+          f"{thumb.right - thumb.left}x{thumb.bottom - thumb.top} logical "
+          f"= {round((thumb.right - thumb.left) * dpr)}x"
+          f"{round((thumb.bottom - thumb.top) * dpr)} physical")
+    uncapped = layout.tile_rects(6000, 4000, 6, aspect=1.6, max_thumb=source)[0].thumb
+    check("and a physical one would not",
+          round((uncapped.right - uncapped.left) * dpr) > source[0],
+          f"{round((uncapped.right - uncapped.left) * dpr)} physical vs {source[0]}")
+
 
 def main():
     manager = FakeManager(load_config())
-    app = App(manager)
+    app = app_class()(manager)
     app.update()
     try:
         check_views(app, manager)

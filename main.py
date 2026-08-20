@@ -4,7 +4,7 @@ import sys
 
 import thumbs
 from boxes import BoxManager, load_config
-from ui.app import App
+from dashboard import app_class
 
 AGENTS = ("script", "claude")
 
@@ -51,7 +51,7 @@ def main():
     for box in manager.boxes:
         print(f"  {box.name}: pids={sorted(box.pids)} hwnd={box.hwnd}")
     try:
-        App(manager).run()
+        app_class()(manager).run()
     finally:
         print("closing boxes...")
         manager.close()

@@ -26,8 +26,12 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 SPI_GETWORKAREA = 0x0030
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
+HWND_TOPMOST = -1
+HWND_NOTOPMOST = -2
 SM_XVIRTUALSCREEN = 76
 SM_YVIRTUALSCREEN = 77
 SM_CXVIRTUALSCREEN = 78
@@ -172,6 +176,20 @@ def move_window(hwnd, x, y, width, height):
     return bool(
         user32.SetWindowPos(hwnd, None, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE)
     )
+
+
+def set_topmost(hwnd, on):
+    """Float a window above the others, or stop.
+
+    Done on the HWND rather than through the toolkit on purpose: Qt recreates
+    the native window when a window flag changes, which would silently
+    invalidate every DWM thumbnail registered against it. SetWindowPos only
+    changes the z-order.
+    """
+    if not hwnd:
+        return False
+    return bool(user32.SetWindowPos(hwnd, HWND_TOPMOST if on else HWND_NOTOPMOST,
+                                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
 
 
 def is_window(hwnd):

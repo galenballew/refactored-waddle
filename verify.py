@@ -39,7 +39,7 @@ import winfocus
 thumbs.set_dpi_awareness()
 
 from boxes import BoxManager, load_config  # noqa: E402
-from ui.app import App  # noqa: E402
+from dashboard import app_class  # noqa: E402
 
 FOCUS_BUDGET_S = 5.0
 FOCUS_ATTEMPTS = 3
@@ -510,7 +510,7 @@ def main():
             ("processes", check_processes(manager)),
             ("summon", check_summon(manager)),
         ]
-        app = App(manager)
+        app = app_class()(manager)
         pump(app, 1.5)
         results += [
             ("thumbnails", check_thumbnails(app, manager)),
