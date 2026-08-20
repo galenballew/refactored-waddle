@@ -61,7 +61,7 @@ import session as session_model
 import thumbs
 from agents import Agent
 from boxes import BoxManager, load_config
-from ui.app import App
+from dashboard import app_class
 
 user32 = ctypes.windll.user32
 
@@ -158,35 +158,11 @@ def reachable(url, timeout=4.0):
         return False
 
 
-# -- finding things on screen ----------------------------------------------
-
-def find_button(widget, text):
-    """A button by its label. The header buttons are packed inline and never
-    kept, so going looking for one is the only way to point at it."""
-    for child in widget.winfo_children():
-        try:
-            if str(child.cget("text")) == text:
-                return child
-        except Exception:
-            pass
-        found = find_button(child, text)
-        if found is not None:
-            return found
-    return None
-
-
-def widget_centre(widget):
-    return (widget.winfo_rootx() + widget.winfo_width() // 2,
-            widget.winfo_rooty() + widget.winfo_height() // 2)
-
-
-def tile_centre(overview, index):
-    """Screen centre of tile `index`; -1 is the add tile."""
-    if not overview.tiles:
-        return None
-    tile = overview.tiles[index]
-    return (overview.canvas.winfo_rootx() + (tile.thumb.left + tile.thumb.right) // 2,
-            overview.canvas.winfo_rooty() + (tile.thumb.top + tile.thumb.bottom) // 2)
+# Where things are on screen is the views' business now -- `tile_centre` and
+# `control_centre` on each of them, in physical pixels. This file used to walk
+# the widget tree comparing button labels, which meant the director knew what
+# the dashboard was built out of. It no longer does, and that is what lets the
+# same script drive either toolkit.
 
 
 # -- the real keyboard -----------------------------------------------------
@@ -276,9 +252,7 @@ class Director:
 
     def point(self, target):
         """Glide the pointer onto a control, so the next action has a cause."""
-        self.app.root.update_idletasks()
-        if hasattr(target, "winfo_rootx"):
-            target = widget_centre(target)
+        self.app.flush()
         if target is None:
             return
         origin = (ctypes.c_long * 2)()
@@ -293,11 +267,8 @@ class Director:
 
     def type(self, text):
         """Into the detail view's chat box, one character at a time."""
-        entry = self.app.detail.entry
-        entry.configure(state="normal")
-        entry.focus_set()
         for char in text:
-            entry.insert("end", char)
+            self.app.detail.type_char(char)
             yield KEY_MS / 1000.0
 
     # -- the seam ---------------------------------------------------------
@@ -337,7 +308,7 @@ class Director:
     def run(self, script):
         self.started = time.monotonic()
         self._gen = script(self)
-        self.app.root.after(400, self._advance)
+        self.app.schedule(400, self._advance)
 
     def _advance(self):
         try:
@@ -352,18 +323,18 @@ class Director:
         if isinstance(item, Wait):
             self._hold(item)
         else:
-            self.app.root.after(max(1, int(float(item) * 1000 * self.pace)),
-                                self._advance)
+            self.app.schedule(max(1, int(float(item) * 1000 * self.pace)),
+                              self._advance)
 
     def _hold(self, wait):
         if wait.done():
-            self.app.root.after(1, self._advance)
+            self.app.schedule(1, self._advance)
         elif wait.expired():
             if wait.label:
                 self.note(f"gave up waiting: {wait.label}")
-            self.app.root.after(1, self._advance)
+            self.app.schedule(1, self._advance)
         else:
-            self.app.root.after(50, self._hold, wait)
+            self.app.schedule(50, self._hold, wait)
 
     def _finish(self):
         print("\n  beat sheet (actual):", flush=True)
@@ -421,7 +392,7 @@ def build_script(claude=True):
 
         # -- 4. the box that is waiting on you -----------------------------
         d.beat("jump straight to the box that needs you")
-        yield from d.point(app.overview.jump)
+        yield from d.point(app.overview.control_centre("jump"))
         yield 0.6
         app.overview.go_to_waiting()
         yield 2.0
@@ -435,7 +406,7 @@ def build_script(claude=True):
         d.beat("detail view: live mirror, trajectory, chat")
         app.show_overview()
         yield 1.5
-        yield from d.point(tile_centre(app.overview, 0))
+        yield from d.point(app.overview.tile_centre(0))
         yield 0.6
         app.enter_detail(box1)
         yield 5.5
@@ -450,7 +421,7 @@ def build_script(claude=True):
         d.beat("stop a run mid-flight")
         app.show_overview()
         yield 1.2
-        yield from d.point(tile_centre(app.overview, 3))
+        yield from d.point(app.overview.tile_centre(3))
         yield 0.5
         app.enter_detail(box4)
         yield 1.2
@@ -458,7 +429,7 @@ def build_script(claude=True):
         yield d.until(lambda: d.state(box4) == session_model.WORKING, 5.0,
                       "box4 starts")
         yield 1.0
-        yield from d.point(app.detail.stop_button)
+        yield from d.point(app.detail.control_centre("stop"))
         d.note(f"stop pressed while box4 was {d.state(box4)}")
         app.detail.stop()
         yield 4.0
@@ -469,11 +440,11 @@ def build_script(claude=True):
         d.beat("take control: the real window, on the desktop, with the keyboard")
         app.show_overview()
         yield 1.2
-        yield from d.point(tile_centre(app.overview, 1))
+        yield from d.point(app.overview.tile_centre(1))
         yield 0.5
         app.enter_detail(box2)
         yield 1.0
-        yield from d.point(find_button(app.detail.frame, "Take control"))
+        yield from d.point(app.detail.control_centre("take control"))
         yield 0.5
         app.detail.take_control()
         yield 1.8
@@ -493,14 +464,14 @@ def build_script(claude=True):
             d.note("box2 did not hold the foreground; skipped the keyboard")
             yield 2.0
         d.beat("look back at the dashboard and it parks itself")
-        app.root.focus_force()   # what clicking the dashboard does
+        app.focus_window()   # what clicking the dashboard does
         yield 3.0
 
         # -- 8. the fleet changes size ---------------------------------------
         d.beat("+ Add box, live")
         app.show_overview()
         yield 1.2
-        yield from d.point(tile_centre(app.overview, -1))
+        yield from d.point(app.overview.tile_centre(-1))
         yield 0.6
         app.overview.add_box()
         yield 1.8
@@ -510,12 +481,12 @@ def build_script(claude=True):
             yield d.settled([added], timeout=60.0)
             yield 3.0
             d.beat("close box: window, agent and conversation, gone")
-            yield from d.point(tile_centre(app.overview,
-                                           len(app.manager.boxes) - 1))
+            yield from d.point(
+                app.overview.tile_centre(len(app.manager.boxes) - 1))
             yield 0.5
             app.enter_detail(added)
             yield 1.5
-            yield from d.point(find_button(app.detail.frame, "Close box"))
+            yield from d.point(app.detail.control_centre("close box"))
             yield 0.5
             app.detail.close_box()
             yield 3.0
@@ -542,7 +513,7 @@ def build_script(claude=True):
 
         # One of them up close while the other two carry on behind it.
         d.beat("watch one of them think")
-        yield from d.point(tile_centre(app.overview, 1))
+        yield from d.point(app.overview.tile_centre(1))
         yield 0.5
         app.enter_detail(box2)
         yield 10.0
@@ -630,7 +601,7 @@ def main():
     if len(manager.boxes) < 5:
         print("demo: this is choreographed for the five boxes in config.json.")
         return 2
-    app = App(manager)
+    app = app_class()(manager)
     print("demo: recording can start now.\n")
     try:
         Director(app, pace).run(build_script(claude))

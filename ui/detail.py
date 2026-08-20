@@ -53,17 +53,19 @@ class DetailView:
         # -- header
         header = ttk.Frame(self.frame)
         header.pack(side="top", fill="x", padx=PAD, pady=(PAD, 6))
-        ttk.Button(header, text="←  Back", command=app.show_overview).pack(side="left")
+        self.back_button = ttk.Button(header, text="←  Back",
+                                      command=app.show_overview)
+        self.back_button.pack(side="left")
         self.title = ttk.Label(header, text="", style="Head.TLabel")
         self.title.pack(side="left", padx=(12, 8))
         self.url = ttk.Label(header, text="", style="Muted.TLabel")
         self.url.pack(side="left")
-        ttk.Button(header, text="Take control", command=self.take_control).pack(
-            side="right"
-        )
-        ttk.Button(header, text="Close box", command=self.close_box).pack(
-            side="right", padx=(0, 8)
-        )
+        self.control_button = ttk.Button(header, text="Take control",
+                                         command=self.take_control)
+        self.control_button.pack(side="right")
+        self.close_button = ttk.Button(header, text="Close box",
+                                       command=self.close_box)
+        self.close_button.pack(side="right", padx=(0, 8))
         self.note = ttk.Label(header, text="", style="Muted.TLabel")
         self.note.pack(side="right", padx=(0, 10))
         # The same state word the tile shows, so the two views teach one
@@ -114,6 +116,14 @@ class DetailView:
         self.canvas.bind("<Configure>", lambda _e: self.relayout())
 
         app.root.bind_all("<MouseWheel>", self._on_wheel, add="+")
+
+        # Named so a director can point at one without walking the widget tree
+        # comparing labels. The view knows what its own controls are called.
+        self._controls = {
+            "back": self.back_button, "close box": self.close_button,
+            "take control": self.control_button, "input": self.entry,
+            "send": self.send_button, "stop": self.stop_button,
+        }
 
     def _text(self, parent, height=None, font=None):
         """A read-only text panel with a scrollbar. Returns (container, widget)."""
@@ -256,6 +266,10 @@ class DetailView:
     def trajectory_text(self):
         return self.trajectory.get("1.0", "end")
 
+    def entry_text(self):
+        """What is currently typed but not yet sent."""
+        return self.entry.get()
+
     def hint_text(self):
         return self.hint.cget("text")
 
@@ -272,6 +286,22 @@ class DetailView:
         """Whether send, stop and the input are each enabled right now."""
         return Controls(str(self.send_button["state"]), str(self.stop_button["state"]),
                         str(self.entry["state"]))
+
+    def control_centre(self, name):
+        """Screen centre of one named control, for the demo's pointer."""
+        widget = self._controls.get(name)
+        return self.app.centre_of(widget) if widget is not None else None
+
+    def type_char(self, char):
+        """Append one character to the chat box, as a keystroke would.
+
+        The input is disabled while a box is working, and the demo types during
+        exactly that -- so it is enabled first. Cosmetic: `send()` is still what
+        actually delivers the message.
+        """
+        self.entry.configure(state="normal")
+        self.entry.focus_set()
+        self.entry.insert("end", char)
 
     def viewport_screen_rect(self):
         """The live view in screen coordinates, for verify.py."""

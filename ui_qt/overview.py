@@ -116,6 +116,8 @@ class OverviewView:
         self.canvas = TileCanvas(self)
         outer.addWidget(self.canvas, 1)
 
+        self._controls = {"jump": self.jump}
+
     # -- view protocol ------------------------------------------------------
 
     # Visibility is the stacked layout's job; these exist for the things a view
@@ -358,6 +360,25 @@ class OverviewView:
     #
     # smoke.py and verify.py ask their questions through these rather than
     # through widget APIs, so a check reads as a claim about the dashboard.
+
+    def tile_centre(self, index):
+        """Screen centre of tile `index`; -1 is the add tile. Physical pixels,
+        because the only caller drives the real cursor with SetCursorPos."""
+        if not self.tiles:
+            return None
+        tile = self.tiles[index]
+        left, top, width, height = self.app.screen_rect(self.canvas, tile.thumb)
+        return (left + width // 2, top + height // 2)
+
+    def control_centre(self, name):
+        """Screen centre of one named control, for the demo's pointer.
+
+        A lookup rather than a walk over the widget tree comparing labels: the
+        view knows what its own controls are called, and a director should not
+        have to know what they are made of.
+        """
+        widget = self._controls.get(name)
+        return self.app.centre_of(widget) if widget is not None else None
 
     def canvas_size(self):
         """The tile area, in the units `layout.tile_rects` lays out in."""

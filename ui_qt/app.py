@@ -438,6 +438,25 @@ class App:
         """Process whatever events are already pending, once. Never blocks."""
         self.qt.processEvents()
 
+    def flush(self):
+        """Let pending layout and painting happen before something is measured."""
+        self.qt.processEvents()
+
+    def schedule(self, ms, function, *args):
+        """Run `function` on this thread after `ms`. The director's clock."""
+        QTimer.singleShot(ms, lambda: function(*args))
+
+    def focus_window(self):
+        """Take the keyboard, as clicking the dashboard would."""
+        self.window.activateWindow()
+        self.window.raise_()
+
+    def centre_of(self, widget):
+        """A widget's middle in physical screen pixels, for SetCursorPos."""
+        left, top, width, height = self.screen_rect(
+            widget, (0, 0, widget.width(), widget.height()))
+        return (left + width // 2, top + height // 2)
+
     def set_topmost(self, on):
         """Float the dashboard above other windows, or stop.
 

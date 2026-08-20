@@ -332,6 +332,23 @@ class App:
         """Process whatever events are already pending, once. Never blocks."""
         self.root.update()
 
+    def flush(self):
+        """Let pending layout and painting happen before something is measured."""
+        self.root.update_idletasks()
+
+    def schedule(self, ms, function, *args):
+        """Run `function` on this thread after `ms`. The director's clock."""
+        self.root.after(ms, function, *args)
+
+    def focus_window(self):
+        """Take the keyboard, as clicking the dashboard would."""
+        self.root.focus_force()
+
+    def centre_of(self, widget):
+        """A widget's middle in physical screen pixels, for SetCursorPos."""
+        return (widget.winfo_rootx() + widget.winfo_width() // 2,
+                widget.winfo_rooty() + widget.winfo_height() // 2)
+
     def set_topmost(self, on):
         """Float the dashboard above other windows, or stop.
 

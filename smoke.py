@@ -371,7 +371,7 @@ def check_crash(app, manager):
 
 def check_shutdown(app):
     """The one failure that outlives the run: children left behind."""
-    print("\n[10] children die with the dashboard")
+    print("\n[11] children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     app.quit()
     ok = True
@@ -461,7 +461,7 @@ def check_model_loop():
     Claude does anything sensible with them needs credentials and cannot be
     checked from here.
     """
-    print("\n[11] the model loop, with a fake model")
+    print("\n[12] the model loop, with a fake model")
 
     def build(script):
         agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
@@ -534,7 +534,7 @@ def check_model_loop():
 
 def check_agent_flag():
     """The paid path is a flag, and only a flag."""
-    print("\n[12] choosing an agent")
+    print("\n[13] choosing an agent")
     check("script by default", agent_from(["main.py"]) == "script")
     check("--agent claude asks for the model",
           agent_from(["main.py", "--agent", "claude"]) == "claude")
@@ -550,7 +550,7 @@ def check_agent_flag():
 
 
 def check_geometry():
-    print("\n[13] geometry")
+    print("\n[14] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -584,6 +584,47 @@ def check_geometry():
           f"{round((uncapped.right - uncapped.left) * dpr)} physical vs {source[0]}")
 
 
+def check_director(app, manager):
+    """The seam demo.py drives the app through.
+
+    It used to walk the widget tree comparing button labels and read screen
+    coordinates off Tk directly, which meant the demo knew what the dashboard
+    was built out of. These are the replacements, and they are checked here
+    because a broken one only shows up two minutes into a recording.
+    """
+    print("\n[10] the director's seam")
+    app.show_overview()
+    app.update()
+
+    centre = app.overview.tile_centre(0)
+    add = app.overview.tile_centre(-1)
+    check("a tile has a screen centre", centre is not None and len(centre) == 2, centre)
+    check("the add tile has its own", add is not None and add != centre, add)
+    check("the jump button can be pointed at",
+          app.overview.control_centre("jump") is not None)
+    check("an unknown control is None rather than a crash",
+          app.overview.control_centre("nonesuch") is None)
+
+    app.enter_detail(manager.boxes[0])
+    app.update()
+    for name in ("back", "close box", "take control", "input", "send", "stop"):
+        spot = app.detail.control_centre(name)
+        check(f"detail control {name!r} can be pointed at",
+              spot is not None and len(spot) == 2, spot)
+
+    for char in "hi":
+        app.detail.type_char(char)
+    check("typing lands in the chat box", app.detail.entry_text() == "hi",
+          app.detail.entry_text())
+
+    ticks = []
+    app.schedule(1, lambda: ticks.append(1))
+    pump(app, 0.3)
+    check("the director's clock fires", ticks == [1], ticks)
+    app.flush()
+    check("flushing does not throw", True)
+
+
 def main():
     manager = FakeManager(load_config())
     app = app_class()(manager)
@@ -598,6 +639,7 @@ def main():
         check_scrollback(app, manager)
         check_crash(app, manager)
         check_fleet(app, manager)
+        check_director(app, manager)
         check_shutdown(app)  # quits the app
         check_model_loop()
         check_agent_flag()

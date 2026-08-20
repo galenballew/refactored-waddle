@@ -89,13 +89,21 @@ class DetailView:
         outer.addLayout(self._build_middle(), 1)
         outer.addWidget(self._build_chat())
 
+        # Named so a director can point at one without walking the widget tree
+        # comparing labels. The view knows what its own controls are called.
+        self._controls = {
+            "back": self.back_button, "close box": self.close_button,
+            "take control": self.control_button, "input": self.entry,
+            "send": self.send_button, "stop": self.stop_button,
+        }
+
     # -- construction -------------------------------------------------------
 
     def _build_header(self):
         header = QHBoxLayout()
-        back = QPushButton("←  Back")
-        back.clicked.connect(self.app.show_overview)
-        header.addWidget(back)
+        self.back_button = QPushButton("←  Back")
+        self.back_button.clicked.connect(self.app.show_overview)
+        header.addWidget(self.back_button)
 
         self.title = QLabel("")
         self.title.setObjectName("head")
@@ -120,14 +128,14 @@ class DetailView:
         header.addWidget(self.note)
         header.addSpacing(10)
 
-        close = QPushButton("Close box")
-        close.clicked.connect(self.close_box)
-        header.addWidget(close)
+        self.close_button = QPushButton("Close box")
+        self.close_button.clicked.connect(self.close_box)
+        header.addWidget(self.close_button)
         header.addSpacing(8)
 
-        control = QPushButton("Take control")
-        control.clicked.connect(self.take_control)
-        header.addWidget(control)
+        self.control_button = QPushButton("Take control")
+        self.control_button.clicked.connect(self.take_control)
+        header.addWidget(self.control_button)
         return header
 
     def _build_middle(self):
@@ -333,6 +341,10 @@ class DetailView:
     def trajectory_text(self):
         return self.trajectory.toPlainText()
 
+    def entry_text(self):
+        """What is currently typed but not yet sent."""
+        return self.entry.text()
+
     def hint_text(self):
         return self.hint.text()
 
@@ -351,6 +363,22 @@ class DetailView:
             NORMAL if self.stop_button.isEnabled() else DISABLED,
             NORMAL if self.entry.isEnabled() else DISABLED,
         )
+
+    def control_centre(self, name):
+        """Screen centre of one named control, for the demo's pointer."""
+        widget = self._controls.get(name)
+        return self.app.centre_of(widget) if widget is not None else None
+
+    def type_char(self, char):
+        """Append one character to the chat box, as a keystroke would.
+
+        The input is disabled while a box is working, and the demo types during
+        exactly that -- so it is enabled first. Cosmetic: `send()` is still what
+        actually delivers the message.
+        """
+        self.entry.setEnabled(True)
+        self.entry.setFocus()
+        self.entry.setText(self.entry.text() + char)
 
     def viewport_screen_rect(self):
         """The live view in physical screen pixels, for verify.py."""
