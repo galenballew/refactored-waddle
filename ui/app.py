@@ -99,9 +99,9 @@ class App:
         self._added_at = 0.0
         self._quitting = False
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
-        # One child process per box. What it runs is decided by the config; that
-        # it is a separate process, reached only by sending a line and draining a
-        # pipe, is the part that matters.
+        # One child process per box, driving that box's browser over CDP. That
+        # it is a separate process, reached only by sending a line and draining
+        # a pipe, is the point.
         self.agents = {box.name: self._spawn(box) for box in manager.boxes}
 
         self.qt = QApplication.instance() or QApplication([])

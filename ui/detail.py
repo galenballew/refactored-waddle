@@ -1,8 +1,13 @@
 """One box, up close: a live view of it, its chat, and what it has been doing.
 
-The view decides nothing. It sends what was typed and redraws what the session
-says; what a message means -- a new task, or an answer to a question -- is the
-driver's call.
+The chat is where the work happens. What answers is `agent_host.py`, one child
+process per box, reached over a pipe: it drives that box's browser over CDP, so
+the states are real, the transitions are real, and so is everything they
+describe.
+
+The view decides none of it. It sends what was typed and redraws what the session
+says; the driver is a subprocess on the far side of that seam, and this view
+knows nothing about what it does.
 
 The trajectory panel is separate from the chat on purpose. An agent's tool calls
 and page visits belong somewhere you can ignore, so that the chat stays short
@@ -47,8 +52,8 @@ NORMAL, DISABLED = "normal", "disabled"
 PAD = 14
 TRAJECTORY_W = 340
 CHAT_LINES = 5
-EMPTY_CHAT = ("No task yet. What you send is run by this box's own agent, in "
-              "the browser above — it opens pages, reads them and clicks links.")
+EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
+              "separate process, driving the browser in the live view.")
 EMPTY_TRAJECTORY = "no activity yet"
 
 
