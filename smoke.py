@@ -34,6 +34,7 @@ import thumbs  # noqa: E402
 thumbs.set_dpi_awareness()
 
 from boxes import load_config, next_box_name  # noqa: E402
+from main import agent_from  # noqa: E402
 from ui.app import App  # noqa: E402
 
 FAILURES = []
@@ -534,8 +535,25 @@ def check_model_loop():
                                               for line in lines if line.get("type") == "say"))
 
 
+def check_agent_flag():
+    """The paid path is a flag, and only a flag."""
+    print("\n[12] choosing an agent")
+    check("script by default", agent_from(["main.py"]) == "script")
+    check("--agent claude asks for the model",
+          agent_from(["main.py", "--agent", "claude"]) == "claude")
+    check("--agent script is still allowed",
+          agent_from(["main.py", "--agent", "script"]) == "script")
+    for bad in (["main.py", "--agent", "gpt"], ["main.py", "--agent"]):
+        try:
+            agent_from(bad)
+            check(f"{' '.join(bad[1:]) or 'nothing'} is refused", False, "accepted")
+        except SystemExit:
+            check(f"{' '.join(bad[1:]) or 'a missing value'} is refused", True)
+    check("the config file cannot turn it on", "agent" not in load_config())
+
+
 def check_geometry():
-    print("\n[12] geometry")
+    print("\n[13] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -563,6 +581,7 @@ def main():
         check_fleet(app, manager)
         check_shutdown(app)  # quits the app
         check_model_loop()
+        check_agent_flag()
         check_geometry()
     finally:
         for agent in app.agents.values():

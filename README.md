@@ -8,9 +8,9 @@ it.
 
 Each window has its own agent process, which drives that window's browser over
 the DevTools protocol: it opens pages, reads them, takes screenshots and clicks
-links. Out of the box a fixed script decides what to do next and nothing calls a
-model. Set `"agent": "claude"` in the config and Claude decides instead — that is
-the only path that costs money, and it is off until you turn it on.
+links. By default a fixed script decides what to do next and nothing calls a
+model. Start it with `--agent claude` and Claude decides instead — that is the
+only path that costs money, and you have to ask for it every time.
 
 ## What you need
 
@@ -23,7 +23,7 @@ the only path that costs money, and it is off until you turn it on.
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install playwright
 .venv\Scripts\python.exe -m playwright install chromium
-.venv\Scripts\python.exe -m pip install anthropic      # only for "agent": "claude"
+.venv\Scripts\python.exe -m pip install anthropic      # only for --agent claude
 ```
 
 Windows only. The live tiles and the window focusing both use Windows APIs
@@ -103,7 +103,7 @@ and no fan-out URL bar. Each window is dealt with one at a time.
 A script, not a mind. Every window has its own agent process, which attaches to
 that window's browser over the DevTools protocol and really does drive it — but
 what it does next is decided by a fixed sequence, not by anything that thinks.
-**There is no AI or model call anywhere in this program.**
+**Started without `--agent claude`, nothing in this program calls a model.**
 
 Given a task, an agent:
 
@@ -128,9 +128,14 @@ only ever what a fixed script found.
 
 ## Letting Claude drive instead
 
-Set `"agent": "claude"` in `config.json` and every window gets a real Claude loop
-in place of the script. **This spends money on your Anthropic account, once per
-task**, so it is off until you ask for it.
+```bash
+.venv\Scripts\python.exe main.py --agent claude
+```
+
+Every window gets a real Claude loop in place of the script. **This spends money
+on your Anthropic account, once per task.** There is no config setting for it on
+purpose: the paid path is something you ask for on the day you want it, not
+something a file in the repository can switch on behind you.
 
 You need the `anthropic` package installed (see above) and an API key in the
 environment. Get a key from [console.anthropic.com](https://console.anthropic.com)
@@ -142,7 +147,7 @@ $env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
 ```
 
 ```bash
-.venv\Scripts\python.exe main.py
+.venv\Scripts\python.exe main.py --agent claude
 ```
 
 To keep it across terminals, `setx ANTHROPIC_API_KEY "sk-ant-your-key-here"` sets
@@ -210,7 +215,6 @@ Edit `config.json`:
   "window_size": [1440, 900],
   "window_layout": "hidden",
   "max_boxes": 12,
-  "agent": "script",
   "dashboard": {
     "size": [1600, 1000],
     "columns": "auto",
@@ -232,8 +236,6 @@ Edit `config.json`:
   number costs memory rather than desk space.
 - `max_boxes` — the most windows **+ Add box** will let you get to, including the
   ones listed in `boxes`. There to stop a stuck finger opening thirty browsers.
-- `agent` — `script` (default) runs the fixed sequence described above and costs
-  nothing. `claude` puts a real model behind every window; see below.
 - `window_layout` — `hidden` (default) parks the windows off the desktop and out
   of the taskbar and Alt-Tab. Any other value puts them back on the desktop as
   ordinary staggered windows, which is there for when you need to look at what a
@@ -323,10 +325,10 @@ Deliberately left out. These are not missing features, they are decisions:
 - No login handling, credential storage, containers, or remote execution.
 - No charts, progress bars, or metrics.
 
-A model call is now possible but not automatic: with the default `"agent":
-"script"` nothing in this program contacts Anthropic, and every decision comes
-from the fixed script described above. `"agent": "claude"` is the opt-in, and it
-is the only thing here that costs money.
+A model call is possible but never automatic: run it without `--agent claude` and
+nothing in this program contacts Anthropic, with every decision coming from the
+fixed script described above. That flag is the only thing here that costs money,
+and it cannot be turned on from a config file.
 
 Also worth knowing: profiles are temporary and thrown away when the app closes.
 The windows are separate browser launches, which keeps their cookies and storage

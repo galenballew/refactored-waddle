@@ -14,9 +14,9 @@ and a trajectory panel beside it. Those two panels are where an agent will
 eventually live. What is behind them today is `agent_host.py`, one child process
 per box, driving that box's browser over CDP: it opens pages, screenshots them,
 reads them and clicks links, and everything it reports really happened. Which of
-those it does is decided by a fixed script by default, or by Claude when
-`config["agent"] == "claude"` — the only path that calls a model, and the only
-one that costs money. See `PLAN.md` for the milestones and the reasoning.
+those it does is decided by a fixed script by default, or by Claude when the app
+is started with `--agent claude` — the only path that calls a model, and the only
+one that costs money.
 
 The dashboard is the **only window the user ever sees**. The boxes are *parked* —
 positioned clear of every monitor and dropped from the taskbar and Alt-Tab — and a
@@ -30,7 +30,8 @@ isolation — see the ephemeral-profiles note below.
 ## Commands
 
 ```bash
-.venv\Scripts\python.exe main.py       # run the app
+.venv\Scripts\python.exe main.py       # run the app (scripted agents, free)
+.venv\Scripts\python.exe main.py --agent claude   # ... with Claude driving, which costs money
 .venv\Scripts\python.exe smoke.py      # fast checks: no browsers, ~1s
 .venv\Scripts\python.exe verify.py     # the eleven proof checks; exits non-zero on failure
 ```
@@ -78,7 +79,6 @@ layout.py     pure geometry — grid rects, the detail viewport, hit testing,
               usually 1, and 2 wastes two thirds of the panel.
 smoke.py      the fast checks: dashboard plus agent children, no browsers
 verify.py     the eleven proof checks
-PLAN.md       the agent work: seven milestones, and the decisions behind them
 ```
 
 Panel geometry inside a view is Tk's packer, not `layout.py`. Only rectangles a
@@ -288,10 +288,11 @@ Deliberately out of scope. Do not add these even if they seem useful:
   agent did, not a dashboard about the dashboard.
 
 There **is** a model call now, in exactly one place: `ModelAgent` in
-`agent_host.py`, reached only when `config["agent"] == "claude"`. Keep it that
-way. Nothing else in this repo may call a model, and the default must stay
-`script` — a dashboard that starts spending money because someone launched it is
-not a dashboard anyone should trust. `BrowserAgent`'s script is deliberately dumb
+`agent_host.py`, reached only when the app is started with `--agent claude`. Keep
+it that way. Nothing else in this repo may call a model, and the paid path stays a
+command-line flag — never a config key, never a default. A dashboard that starts
+spending money because someone launched it, or because a checked-in file said so,
+is not a dashboard anyone should trust. `BrowserAgent`'s script is deliberately dumb
 (find a URL, click the first link); if it needs to decide something, that is what
 `ModelAgent` is for, not a cleverer script.
 
