@@ -263,6 +263,9 @@ class DetailView:
         self.chip.setText(f"● {state}")
         self.chip.setStyleSheet(
             f"color: {theme.state_colour(state)}; background: transparent;")
+        # The frame around the mirror follows the same crossfade the tile's
+        # does, so the two views move in one vocabulary rather than two.
+        self.canvas.update()
 
         # Input is refused while a box is working, because the agent would drop
         # it: better a disabled box and a reason than a message that vanishes.
@@ -326,13 +329,43 @@ class DetailView:
             return
         # The same frame a tile gets, outside the mirror for the same reason: a
         # thumbnail composites above this widget, so a border on the boundary
-        # would be half eaten by it.
-        painter.setPen(QPen(theme.qcolour(theme.EDGE), 1))
+        # would be half eaten by it. It carries the state the same way too --
+        # crossfading, and swelling when the box wants you -- because you can be
+        # in here watching a box work and the moment it stops to ask something
+        # is the moment worth catching.
+        painter.setPen(QPen(*self._frame_pen()))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(
             rect.adjusted(-theme.CARD_INSET, -theme.CARD_INSET,
                           theme.CARD_INSET, theme.CARD_INSET),
             theme.RADIUS, theme.RADIUS)
+
+    def _frame_pen(self):
+        """Colour and weight for the mirror's frame, mid-transition included.
+
+        Idle is a plain edge here rather than the tile's brighter one: this
+        frame is a single large rectangle with nothing to be told apart from,
+        and at that size the same grey reads considerably louder.
+        """
+        mover = self.app.motion_of(self.box)
+        if mover is None:
+            return theme.qcolour(theme.EDGE), 1.0
+
+        def pen_for(state):
+            if state == session_model.IDLE:
+                return theme.qcolour(theme.EDGE), 1.0
+            return theme.state_qcolour(state), 2.0
+
+        was_colour, was_width = pen_for(mover.previous)
+        now_colour, now_width = pen_for(mover.state)
+        blend = mover.blend.get()
+        colour = theme.mix(was_colour, now_colour, blend)
+        width = was_width + (now_width - was_width) * blend
+        attention = mover.attention.get()
+        if attention:
+            colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
+            width += 1.6 * attention
+        return colour, width
 
     # -- inspection ---------------------------------------------------------
     #
@@ -373,6 +406,20 @@ class DetailView:
         """Screen centre of one named control, for the demo's pointer."""
         widget = self._controls.get(name)
         return self.app.centre_of(widget) if widget is not None else None
+
+    def focused_control(self):
+        """Which named control the keyboard would land in, or None.
+
+        `focusWidget()` rather than `hasFocus()` on purpose: the checks run
+        against a window that is not necessarily the active one, and a widget
+        that is this view's focus while the window is inactive still answers the
+        question being asked -- where does typing go when you come back.
+        """
+        focused = self.frame.focusWidget()
+        for name, widget in self._controls.items():
+            if widget is focused:
+                return name
+        return None
 
     def type_char(self, char):
         """Append one character to the chat box, as a keystroke would.

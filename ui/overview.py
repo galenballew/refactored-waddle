@@ -33,6 +33,9 @@ class TileCanvas(QWidget):
     def __init__(self, view):
         super().__init__()
         self._view = view
+        # Without this Qt only reports the pointer while a button is held, and
+        # hover would only ever happen mid-drag.
+        self.setMouseTracking(True)
 
     def paintEvent(self, _event):
         painter = QPainter(self)
@@ -57,6 +60,17 @@ class TileCanvas(QWidget):
         point = event.position().toPoint()
         self._view.double_click(point.x(), point.y())
 
+    def mouseMoveEvent(self, event):
+        point = event.position().toPoint()
+        self._view.hover(point.x(), point.y())
+
+    def leaveEvent(self, event):
+        # The pointer can leave the canvas without ever crossing a tile edge --
+        # straight off the window, or up into the header -- and no move event
+        # says so. Without this the last tile stays lit for good.
+        super().leaveEvent(event)
+        self._view.hover(None, None)
+
 
 class OverviewView:
     def __init__(self, app):
@@ -64,6 +78,7 @@ class OverviewView:
         self.tiles = []
         self._empty = set()      # tile indices with no window behind them
         self._launching = False
+        self._hovered = None     # tile index under the pointer, add tile included
 
         self.font = app.fonts["small"]
         self.body = app.fonts["body"]
@@ -127,7 +142,9 @@ class OverviewView:
         pass
 
     def hide(self):
-        pass
+        # Leaving by double-click means the pointer never crosses a tile edge on
+        # the way out, so nothing else would ever put this tile down.
+        self.hover(None, None)
 
     def relayout(self):
         # One cell past the fleet: the last tile is "+ Add box", laid out with
@@ -199,13 +216,13 @@ class OverviewView:
             return
         self._paint_add_tile(painter, self.tiles[-1])
         for tile, box in zip(self.tiles, boxes):
-            state = self.app.sessions[box.name].state
-            self._paint_card(painter, tile, state)
+            mover = self.app.motion_of(box)
+            self._paint_card(painter, tile, mover)
             if tile.index in self._empty:
                 self._paint_empty(painter, tile)
-            self._paint_caption(painter, tile, box, state)
+            self._paint_caption(painter, tile, box, mover)
 
-    def _paint_card(self, painter, tile, state):
+    def _paint_card(self, painter, tile, mover):
         """The frame a tile sits in.
 
         Drawn on the CELL grown by a few pixels, so every edge of it falls
@@ -217,17 +234,61 @@ class OverviewView:
         Every tile is framed, idle included. An unframed tile has no edge of its
         own and reads as a screenshot lying on the background; the state is said
         in the border's colour and weight, and again in words underneath.
+
+        All three of the things a frame can be doing land here, because they all
+        end up as one pen: a state crossfading into another, an attention swell
+        on the two states that want you, and the pointer being on this tile.
+        Everything stays inside CARD_INSET -- there is nowhere else for it to go,
+        since a wider frame would run into the neighbouring card and a glow
+        outside the rect would be eaten by the next tile's thumbnail.
         """
         rect = self._rectf(tile.cell).adjusted(
             -theme.CARD_INSET, -theme.CARD_INSET, theme.CARD_INSET, theme.CARD_INSET)
-        painter.setBrush(theme.qcolour(theme.PANEL))
-        if state == session.IDLE:
-            painter.setPen(QPen(theme.qcolour(theme.EDGE_BRIGHT), 1))
-        else:
-            painter.setPen(QPen(theme.state_qcolour(state), 2))
+        hover = mover.hover.get()
+        painter.setBrush(theme.mix(theme.PANEL, theme.HOVER_PANEL, hover))
+
+        colour, width = self._frame_pen(mover)
+        painter.setPen(QPen(colour, width))
         painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
 
-    def _paint_caption(self, painter, tile, box, state):
+    @staticmethod
+    def _frame_pen(mover):
+        """What colour and how heavy this tile's frame is this frame.
+
+        Idle is a plain edge rather than a state colour, so the weight has to
+        crossfade along with the hue -- otherwise a box leaving idle snaps from
+        1px to 2px in the middle of an otherwise smooth transition and the whole
+        effect reads as a glitch.
+        """
+        def pen_for(state):
+            if state == session.IDLE:
+                return theme.qcolour(theme.EDGE_BRIGHT), 1.0
+            return theme.state_qcolour(state), 2.0
+
+        was_colour, was_width = pen_for(mover.previous)
+        now_colour, now_width = pen_for(mover.state)
+        blend = mover.blend.get()
+        colour = theme.mix(was_colour, now_colour, blend)
+        width = was_width + (now_width - was_width) * blend
+
+        # A swell brightens and thickens the colour the tile already has, rather
+        # than introducing one of its own: the state vocabulary stays five
+        # colours, and the movement is what carries the interruption.
+        attention = mover.attention.get()
+        if attention:
+            colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
+            width += 1.6 * attention
+
+        # Hover lifts whatever is already there. Never toward the accent: that
+        # is reserved for things you can act on, and every tile is one, so
+        # spending it here would say nothing.
+        hover = mover.hover.get()
+        if hover:
+            colour = theme.mix(colour, theme.TEXT, 0.28 * hover)
+            width += 0.6 * hover
+        return colour, width
+
+    def _paint_caption(self, painter, tile, box, mover):
         """name · state · url, on the strip under the tile.
 
         Three weights rather than three colours doing all the work: the name is
@@ -236,31 +297,37 @@ class OverviewView:
         rather than a document -- you can tell a form from a table but not read
         a word -- so this strip is where the box actually says what it is.
         """
+        state = mover.state
         top = tile.label.top + 5
         x = tile.label.left + 8
         right = tile.label.right - 8
+        hover = mover.hover.get()
 
         painter.setFont(self.name_font)
         baseline = top + self.name_metrics.ascent()
-        painter.setPen(theme.qcolour(theme.TEXT))
+        painter.setPen(theme.mix(theme.TEXT, "#ffffff", 0.5 * hover))
         painter.drawText(x, baseline, box.name)
         x += self.name_metrics.horizontalAdvance(box.name) + 10
 
         # A painted dot rather than the "●" glyph: it lands on a whole pixel at
         # any size, and the glyph's own side bearing was doing the spacing.
-        radius = 3.0
+        # It swells with the frame, so the interruption is said twice in the one
+        # place you are already looking to find out which box it came from.
+        colour = theme.mix(theme.state_qcolour(mover.previous),
+                           theme.state_qcolour(state), mover.blend.get())
+        radius = 3.0 + 1.6 * mover.attention.get()
+        centre_y = baseline - self.metrics.ascent() / 2
         painter.setPen(Qt.NoPen)
-        painter.setBrush(theme.state_qcolour(state))
-        painter.drawEllipse(QRectF(x, baseline - self.metrics.ascent() / 2 - radius,
-                                   radius * 2, radius * 2))
-        x += radius * 2 + 6
+        painter.setBrush(colour)
+        painter.drawEllipse(QRectF(x, centre_y - radius, radius * 2, radius * 2))
+        x += 3.0 * 2 + 6   # the settled size, so the words never shift with it
 
         painter.setFont(self.font)
-        painter.setPen(theme.state_qcolour(state))
+        painter.setPen(colour)
         painter.drawText(x, baseline, state)
         x += self.metrics.horizontalAdvance(state) + 10
 
-        painter.setPen(theme.qcolour(theme.DIM))
+        painter.setPen(theme.mix(theme.DIM, theme.MUTED, hover))
         painter.drawText(x, baseline, clip(
             self.metrics.horizontalAdvance,
             short_url(self.app.url_of(box)),
@@ -273,13 +340,15 @@ class OverviewView:
         Dashed, and captionless, so it never reads as a window that failed to
         appear.
         """
+        hovered = self._hovered == tile.index
         if self._launching:
             text, colour = "launching…", theme.MUTED
         elif self.app.can_add():
-            text, colour = "+   Add box", theme.MUTED
+            text, colour = "+   Add box", theme.TEXT if hovered else theme.MUTED
         else:
             text, colour = f"limit reached ({self.app.manager.max_boxes})", theme.DIM
-        pen = QPen(theme.qcolour(theme.EDGE), 1, Qt.DashLine)
+        pen = QPen(theme.qcolour(theme.EDGE_BRIGHT if hovered else theme.EDGE),
+                   1, Qt.DashLine)
         pen.setDashPattern([4, 4])
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
@@ -325,6 +394,34 @@ class OverviewView:
         ]
 
     # -- actions ------------------------------------------------------------
+
+    def hover(self, x, y):
+        """The pointer moved. `None` means it left the grid entirely.
+
+        Hover lives in the frame, the caption and the cursor -- never over the
+        tile itself. A thumbnail composites above everything this app paints, so
+        a scrim or a caption laid across a tile would simply be invisible, and
+        the only way to draw there at all would be to hide the live view of the
+        box you are pointing at. That trade is not worth making: a dashboard
+        that blanks a box the moment you look at it is worse than one with no
+        hover state.
+        """
+        index = None if x is None else layout.hit_test(self.tiles, x, y)
+        boxes = self.app.manager.boxes
+        if index is not None and index >= len(boxes):
+            index = None if not self.app.can_add() else index
+        if index == self._hovered:
+            return
+        self._hovered = index
+        for at, box in enumerate(boxes):
+            mover = self.app.motion_of(box)
+            if mover is not None:
+                mover.set_hover(at == index)
+        # A tile you can open, and an add tile you can click, both deserve to
+        # say so with the pointer. The grid's dead space does not.
+        self.canvas.setCursor(
+            Qt.PointingHandCursor if index is not None else Qt.ArrowCursor)
+        self.canvas.update()
 
     def double_click(self, x, y):
         index = layout.hit_test(self.tiles, x, y)

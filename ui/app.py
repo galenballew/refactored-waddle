@@ -26,6 +26,12 @@ switching only moves the thumbnails and no tile ever goes blank on a view change
 The two timers do unrelated jobs at unrelated rates. `refresh` is the layout
 tick, once a second. `pump` drains the agent children fifty times a second,
 because a chat that answers on a one-second boundary reads as broken.
+
+Animation is not a third timer. `ui/motion.py` runs on Qt's own animation clock,
+only while something is actually moving, and every redraw it asks for goes
+through `request_draw` -- which collapses however many values moved this frame
+into a single draw on the next turn of the event loop. An idle fleet animates
+nothing and therefore costs nothing.
 """
 
 import time
@@ -39,7 +45,7 @@ import winfocus
 from agents import Agent
 from session import Session
 
-from . import theme
+from . import motion, theme
 from .detail import DetailView
 from .overview import OverviewView
 
@@ -98,7 +104,12 @@ class App:
         self.adding = False   # a launch is running on this thread right now
         self._added_at = 0.0
         self._quitting = False
+        self._draw_queued = False
         self.sessions = {box.name: Session(box.name) for box in manager.boxes}
+        # What each box's chrome is doing right now. Owned here rather than by a
+        # view because a box changes state whether or not you are looking at it,
+        # and both views draw the same state vocabulary.
+        self.motion = {box.name: self._new_motion(box) for box in manager.boxes}
         # One child process per box, driving that box's browser over CDP. That
         # it is a separate process, reached only by sending a line and draining
         # a pipe, is the point.
@@ -159,14 +170,89 @@ class App:
         # The outgoing view leaves its thumbnails wherever it put them, and DWM
         # would happily keep compositing them over the new one.
         self.hide_thumbs()
+        # Both halves of the view protocol, which until now nothing called: the
+        # detail view's `show` is what puts the keyboard in the chat box, so
+        # opening a box and typing worked only if you clicked the input first.
+        if self.view is not None:
+            self.view.hide()
         self.view = view
         self.stack.setCurrentWidget(view.frame)
         self.qt.processEvents()
+        # Every mirror the new view is about to show has just been hidden, so
+        # without this they all snap back at full strength in one frame. Fading
+        # them in is both gentler and more honest -- a live view genuinely is
+        # arriving, and it arrives at the same speed a new box's tile does.
+        for box in self._shown_by(view):
+            mover = self.motion.get(box.name)
+            if mover is not None:
+                mover.fade_in()
         view.relayout()
+        view.show()
+
+    def _shown_by(self, view):
+        """Which boxes that view is about to mirror. The detail view shows one."""
+        if view is self.detail:
+            return [self.box] if self.box is not None else []
+        return list(self.manager.boxes)
 
     def relayout(self):
         if self.view is not None:
             self.view.relayout()
+
+    # -- motion -------------------------------------------------------------
+
+    def _new_motion(self, box):
+        return motion.TileMotion(self.sessions[box.name].state, self.request_draw)
+
+    def motion_of(self, box):
+        """How this box's chrome is moving. Both views ask through this."""
+        return self.motion.get(box.name)
+
+    def request_draw(self):
+        """Something moved; draw once, soon.
+
+        Coalesced on purpose. Five boxes with four animated values each would
+        otherwise ask for twenty redraws in a single frame, and a draw is not
+        free -- it re-places every thumbnail. One per turn of the event loop is
+        both enough and the most Qt would paint anyway.
+        """
+        if self._quitting or self._draw_queued:
+            return
+        self._draw_queued = True
+        QTimer.singleShot(0, self._flush_draw)
+
+    def _flush_draw(self):
+        self._draw_queued = False
+        if not self._quitting:
+            self.draw()
+
+    def _on_screen(self, box):
+        """Is this box's chrome somewhere the user can see it right now?
+
+        A swell that plays to an empty room has spent its one chance to be
+        noticed, so a box whose tile is behind another box's detail view changes
+        state without animating. Coming back to the overview fades the tiles in
+        anyway, which is the announcement that matters.
+        """
+        return self.view is not self.detail or box is self.box
+
+    def _note_states(self):
+        """Start whatever motion the last pump's state changes deserve."""
+        for box in self.manager.boxes:
+            mover = self.motion.get(box.name)
+            sess = self.sessions.get(box.name)
+            if mover is not None and sess is not None:
+                mover.to_state(sess.state, animate=self._on_screen(box))
+
+    def motion_idle(self):
+        """True when nothing is moving.
+
+        `verify.py` reads pixels off tiles, and a tile caught mid-fade is a real
+        colour that is nonetheless the wrong answer. This lets a check wait for
+        the dashboard to be still rather than sleep a guessed number of
+        milliseconds and hope.
+        """
+        return not any(mover.moving for mover in self.motion.values())
 
     # -- thumbnails ---------------------------------------------------------
 
@@ -211,13 +297,24 @@ class App:
 
         One retry through re-registration, because a source that died and came
         back gets a new HWND and the old handle will never paint again.
+
+        Opacity comes from the box's own motion rather than from the caller: a
+        tile fading in is a property of the box having just arrived, and every
+        view that draws it should agree about how far along that is. A fully
+        transparent thumbnail is hidden outright instead -- there is nothing to
+        composite, and hidden says so.
         """
         crop = self._crop(box)
+        mover = self.motion.get(box.name)
+        level = 1.0 if mover is None else mover.opacity.get()
+        opacity = max(0, min(255, round(level * 255)))
         handle = self.handles.get(box.name)
-        if handle is not None and thumbs.place(handle, rect, source=crop):
+        if handle is not None and thumbs.place(handle, rect, source=crop,
+                                               opacity=opacity, visible=opacity > 0):
             return True
         handle = self._register(box)
-        return handle is not None and thumbs.place(handle, rect, source=crop)
+        return handle is not None and thumbs.place(
+            handle, rect, source=crop, opacity=opacity, visible=opacity > 0)
 
     def hide_thumbs(self):
         for handle in self.handles.values():
@@ -342,6 +439,8 @@ class App:
             return None
         self.sessions[box.name] = Session(box.name)
         self.agents[box.name] = self._spawn(box)
+        self.motion[box.name] = self._new_motion(box)
+        self.motion[box.name].fade_in()
         self._register(box)
         self.overview.relayout()
         return box
@@ -360,6 +459,7 @@ class App:
         if agent is not None:
             agent.close()
         self.sessions.pop(box.name, None)
+        self.motion.pop(box.name, None)
         handle = self.handles.pop(box.name, None)
         if handle is not None:
             thumbs.unregister(handle)
@@ -401,8 +501,13 @@ class App:
         """Drain every child. Never blocks: `pipes.py` reads only what has
         already arrived."""
         moved = [agent.pump() for agent in self.agents.values()]
-        if any(moved) and self.view is not None:
-            self.view.sync()
+        if any(moved):
+            # Before the redraw, not after: a view paints the state vocabulary
+            # through the motion, so the crossfade has to have been started by
+            # the time it asks what colour a frame is.
+            self._note_states()
+            if self.view is not None:
+                self.view.sync()
 
     # -- the tick -----------------------------------------------------------
 
@@ -426,6 +531,11 @@ class App:
         """One full refresh: fix the desktop, then redraw. This is what the
         refresh budget in verify.py measures."""
         self._settle()
+        # Cheap, and a no-op unless something actually changed: `pump` is the
+        # only path a state arrives by today, and this is here so that stays a
+        # fact about the protocol rather than an assumption the chrome depends
+        # on to show the right colour.
+        self._note_states()
         self.draw()
 
     # -- the window ---------------------------------------------------------

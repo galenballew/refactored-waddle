@@ -25,6 +25,7 @@ PANEL = "#17171c"       # cards, chat and trajectory panels
 FIELD = "#20202a"       # inputs and buttons
 EDGE = "#2a2a33"        # panel and tile borders
 EDGE_BRIGHT = "#3a3a46"  # a border that wants noticing
+HOVER_PANEL = "#1e1e26"  # a card with the pointer on it
 TEXT = "#eceef2"
 MUTED = "#8b8b98"
 DIM = "#5a5a66"
@@ -67,6 +68,23 @@ def qcolour(name):
 
 def state_qcolour(state):
     return QColor(state_colour(state))
+
+
+def mix(first, second, amount):
+    """`first` at 0, `second` at 1, straight down the middle in between.
+
+    Interpolated in sRGB rather than in a perceptual space on purpose: every
+    pair this is asked to blend is one of the state colours against another, and
+    they were picked at a similar lightness precisely so a crossfade between two
+    of them does not dip through mud on the way.
+    """
+    amount = 0.0 if amount < 0 else 1.0 if amount > 1 else amount
+    first, second = QColor(first), QColor(second)
+    return QColor(
+        round(first.red() + (second.red() - first.red()) * amount),
+        round(first.green() + (second.green() - first.green()) * amount),
+        round(first.blue() + (second.blue() - first.blue()) * amount),
+    )
 
 
 def fonts():

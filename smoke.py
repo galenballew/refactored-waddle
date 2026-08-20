@@ -110,6 +110,20 @@ def pump(app, seconds):
         time.sleep(0.005)
 
 
+def wait_until(app, predicate, seconds=3.0):
+    """Run the loop until something is true, then stop immediately.
+
+    `settle` waits out a whole script; this stops the instant the thing happens,
+    which is what a check about a transition needs -- a quarter-second crossfade
+    is over long before a fixed sleep would end.
+    """
+    deadline = time.time() + seconds
+    while time.time() < deadline and not predicate():
+        app.update()
+        time.sleep(0.002)
+    return predicate()
+
+
 def settle(app, steps=8):
     """Long enough for a child to walk `steps` of its script."""
     pump(app, steps * STEP_MS / 1000.0 + 0.6)
@@ -278,9 +292,111 @@ def check_attention(app, manager):
     check("and it opens that box", app.box is box)
 
 
+def check_motion(app, manager):
+    """That the chrome moves when something changes, and stops when it stops.
+
+    Checks about the values, not about pixels: what a frame is painted with is
+    `_frame_pen`'s business, and asserting on a colour mid-crossfade would be a
+    check about an easing curve. What matters here is that a state change starts
+    a transition, that only the two states worth interrupting someone for get a
+    swell, and -- the one that would actually hurt -- that everything comes back
+    to rest, because motion that never settles is a repaint every frame forever.
+    """
+    print("\n[7] motion")
+    app.show_overview()
+    app.update()
+    pump(app, 0.5)   # the view switch fades its tiles in
+
+    # A box of this group's own, closed again at the end. The swell only happens
+    # on the two states worth interrupting someone for, and the stand-in only
+    # reaches `needs input` on a box's *first* task -- so borrowing a box that
+    # another group has already used would quietly test nothing. Adding one is
+    # also the honest way to check that a tile arriving fades in.
+    box = app.add_box()
+    mover = app.motion_of(box)
+    check("a new box fades its tile in", box is not None and mover.opacity.get() < 1.0,
+          mover.opacity.get() if box else "no box")
+
+    pump(app, 0.5)
+    check("a box at rest is not moving", not mover.moving)
+    check("and the dashboard agrees", app.motion_idle())
+
+    app.send(box, "a task")
+    # Caught at the transition rather than after it: a crossfade lasts a quarter
+    # of a second, and settling first would only prove it had already finished.
+    wait_until(app, lambda: app.sessions[box.name].state == model.WORKING)
+    check("working starts a crossfade", mover.moving and mover.state == model.WORKING,
+          f"{mover.previous} -> {mover.state}")
+    check("the old state is still readable", mover.previous == model.IDLE)
+    check("working does not swell", not mover.attention.moving)
+
+    wait_until(app, lambda: app.sessions[box.name].state == model.NEEDS_INPUT)
+    check("the box is waiting on the user",
+          app.sessions[box.name].state == model.NEEDS_INPUT)
+    check("needs input swells", mover.attention.moving)
+
+    pump(app, 1.4)  # longer than SWELL_MS
+    check("the swell ends by itself", not mover.attention.moving,
+          mover.attention.get())
+    check("and settles back to nothing", mover.attention.get() == 0.0)
+    check("nothing is left moving", app.motion_idle())
+
+    # Hover is the affordance for "double-click opens this", and it must land on
+    # the tile the pointer is over and no other.
+    first, second = manager.boxes[0], manager.boxes[1]
+    centre = app.overview.tiles[0].cell   # tile 0 is always the first box
+    app.overview.hover((centre.left + centre.right) // 2,
+                       (centre.top + centre.bottom) // 2)
+    check("hovering a tile lifts it", app.motion_of(first).hover.moving
+          or app.motion_of(first).hover.get() > 0)
+    check("and lifts nothing else", app.motion_of(second).hover.get() == 0.0)
+    app.overview.hover(None, None)
+    pump(app, 0.3)
+    check("leaving the grid puts it down", app.motion_of(first).hover.get() == 0.0)
+
+    # A tile arriving fades in rather than appearing. Entering a view is the
+    # same event as far as a mirror is concerned -- it was hidden, now it is not.
+    app.enter_detail(box)
+    app.update()
+    check("opening a box fades its mirror in", app.motion_of(box).opacity.get() < 1.0,
+          app.motion_of(box).opacity.get())
+    pump(app, 0.5)
+    check("the fade finishes", app.motion_of(box).opacity.get() == 1.0)
+
+    # A box whose tile is behind another box's detail view changes state without
+    # animating: the swell is an interruption, and there is nobody to interrupt.
+    other = manager.boxes[2]
+    was = app.sessions[other.name].state
+    app.send(other, "a task")
+    # Waiting for the state to actually move, or this passes for the boring
+    # reason that nothing happened yet rather than the interesting one.
+    wait_until(app, lambda: app.sessions[other.name].state != was)
+    check("an off-screen box does not animate", not app.motion_of(other).moving,
+          f"{was} -> {app.motion_of(other).state}")
+    check("but its state is still current",
+          app.motion_of(other).state == app.sessions[other.name].state)
+    # The borrowed box goes back to idle; this group's own box goes away. A box
+    # left mid-question would read the next group's first message as the answer
+    # to it, and [9] would then fail somewhere unrelated to what [9] is about.
+    app.cancel(other)
+    settle(app, 2)
+
+    # The view protocol's `show`/`hide` had no caller at all until this stage,
+    # which meant opening a box and typing did nothing until you clicked the
+    # input first. Cheap to lose again, so it is pinned here.
+    check("opening a box puts the keyboard in its chat",
+          app.detail.focused_control() == "input", app.detail.focused_control())
+
+    count = len(manager.boxes)
+    app.remove_box(box)
+    check("and the fleet is as this group found it",
+          len(manager.boxes) == count - 1 and box.name not in app.motion,
+          f"{len(manager.boxes)} boxes")
+
+
 def check_scrollback(app, manager):
     """Updates must not yank a reader back to the bottom."""
-    print("\n[7] scrollback")
+    print("\n[8] scrollback")
     box = manager.boxes[2]
     app.enter_detail(box)
     app.update()
@@ -298,7 +414,7 @@ def check_scrollback(app, manager):
 
 def check_fleet(app, manager):
     """Adding a box at runtime has to give it everything a box has."""
-    print("\n[9] growing and shrinking the fleet")
+    print("\n[10] growing and shrinking the fleet")
     start = len(manager.boxes)
 
     box = app.add_box()
@@ -344,7 +460,7 @@ def check_fleet(app, manager):
 
 def check_crash(app, manager):
     """A child that dies mid-task has to become visible, not silent."""
-    print("\n[8] a child that dies")
+    print("\n[9] a child that dies")
     box = manager.boxes[1]
     state = app.sessions[box.name]
     agent = app.agents[box.name]
@@ -371,7 +487,7 @@ def check_crash(app, manager):
 
 def check_shutdown(app):
     """The one failure that outlives the run: children left behind."""
-    print("\n[11] children die with the dashboard")
+    print("\n[12] children die with the dashboard")
     procs = [(name, agent.proc) for name, agent in app.agents.items()]
     app.quit()
     ok = True
@@ -465,7 +581,7 @@ def check_model_loop():
     Claude does anything sensible with them needs credentials and cannot be
     checked from here.
     """
-    print("\n[12] the model loop, with a fake model")
+    print("\n[13] the model loop, with a fake model")
 
     def build(script):
         agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
@@ -572,7 +688,7 @@ def check_model_loop():
 
 def check_agent_flag():
     """The paid path is a flag, and only a flag."""
-    print("\n[13] choosing an agent")
+    print("\n[14] choosing an agent")
     check("script by default", agent_from(["main.py"]) == "script")
     check("--agent claude asks for the model",
           agent_from(["main.py", "--agent", "claude"]) == "claude")
@@ -588,7 +704,7 @@ def check_agent_flag():
 
 
 def check_geometry():
-    print("\n[14] geometry")
+    print("\n[15] geometry")
     big = layout.viewport_rect(4000, 3000, aspect=1.6, max_thumb=(1440, 900))
     check("never scaled past the source",
           (big.right - big.left, big.bottom - big.top) == (1440, 900))
@@ -630,7 +746,7 @@ def check_director(app, manager):
     was built out of. These are the replacements, and they are checked here
     because a broken one only shows up two minutes into a recording.
     """
-    print("\n[10] the director's seam")
+    print("\n[11] the director's seam")
     app.show_overview()
     app.update()
 
@@ -674,6 +790,7 @@ def main():
         check_stop(app, manager)
         check_controls(app, manager)
         check_attention(app, manager)
+        check_motion(app, manager)
         check_scrollback(app, manager)
         check_crash(app, manager)
         check_fleet(app, manager)
