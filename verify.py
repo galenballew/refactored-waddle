@@ -118,6 +118,22 @@ def pump(app, seconds=1.0):
         time.sleep(0.02)
 
 
+def settle(app, seconds=1.5):
+    """Run the loop until the chrome has stopped moving.
+
+    A tile fading in is a real colour that is nonetheless the wrong answer, and
+    every check below that reads pixels reads them off a tile. Waiting on the
+    dashboard's own account of whether anything is animating beats sleeping a
+    guessed number of milliseconds: it is exact when nothing is moving, and it
+    still has a deadline for the case where something never stops.
+    """
+    deadline = time.time() + seconds
+    while time.time() < deadline and not app.motion_idle():
+        app.update()
+        time.sleep(0.01)
+    app.update()
+
+
 def check_processes(manager):
     print("\n[1] live Chromium processes with windows")
     live = winfocus.chrome_pids()
@@ -283,6 +299,7 @@ def check_live_tiles(app, manager):
         pump(app, 2.0)
         app.draw()
         pump(app, 0.5)
+        settle(app)   # never sample a tile that is still fading in
         for index, (left, top, width, height) in enumerate(app.overview.tile_screen_rects()):
             # Sample the middle of the tile: the thumbnail includes Chromium's
             # tab strip and toolbar at the top, which are not the page colour.
@@ -333,6 +350,7 @@ def check_resize(app, manager):
         pump(app, 1.5)
         app.draw()
         pump(app, 0.5)
+        settle(app)   # a corner still fading in is not a corner gone missing
         for index, (left, top, width, height) in enumerate(app.overview.tile_screen_rects()):
             # Sample the far corner: that is the part that goes missing first.
             r, g, b = avg_rgb(left + width - 24, top + height - 24, 16, 16)

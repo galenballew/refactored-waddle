@@ -9,7 +9,11 @@ the state vocabulary.
 The one rule the design cannot argue with: a DWM thumbnail composites above
 everything this app paints, so all of it -- frames, captions, shadows -- lives
 outside the rectangle a tile occupies. That is why tiles are framed rather than
-overlaid, and why there is no hover scrim anywhere.
+overlaid, and why there is no hover scrim anywhere: hover is a lift of the frame
+and the caption, not a wash over the tile. `mix` is here rather than in
+`ui/motion.py` because interpolating two of these colours is a question about
+the palette -- they were chosen at a similar lightness precisely so a crossfade
+between any two of them does not dip through mud on the way.
 
 None of Tk's escape hatches are needed. A Qt stylesheet reaches every widget,
 themed or not, so there is no "use a classic widget to make the colour stick"
@@ -25,6 +29,7 @@ PANEL = "#17171c"       # cards, chat and trajectory panels
 FIELD = "#20202a"       # inputs and buttons
 EDGE = "#2a2a33"        # panel and tile borders
 EDGE_BRIGHT = "#3a3a46"  # a border that wants noticing
+HOVER_PANEL = "#1e1e26"  # a card with the pointer on it
 TEXT = "#eceef2"
 MUTED = "#8b8b98"
 DIM = "#5a5a66"
@@ -67,6 +72,23 @@ def qcolour(name):
 
 def state_qcolour(state):
     return QColor(state_colour(state))
+
+
+def mix(first, second, amount):
+    """`first` at 0, `second` at 1, straight down the middle in between.
+
+    Interpolated in sRGB rather than in a perceptual space on purpose: every
+    pair this is asked to blend is one of the state colours against another, and
+    they were picked at a similar lightness precisely so a crossfade between two
+    of them does not dip through mud on the way.
+    """
+    amount = 0.0 if amount < 0 else 1.0 if amount > 1 else amount
+    first, second = QColor(first), QColor(second)
+    return QColor(
+        round(first.red() + (second.red() - first.red()) * amount),
+        round(first.green() + (second.green() - first.green()) * amount),
+        round(first.blue() + (second.blue() - first.blue()) * amount),
+    )
 
 
 def fonts():
@@ -118,6 +140,14 @@ QPushButton:disabled {{
     color: {DIM};
     border-color: {EDGE};
 }}
+/* Header buttons. A header is chrome around the thing you came here to look at,
+   and at the body size these are tall enough to compete with it -- which on the
+   detail view costs the live mirror the height it takes. */
+QPushButton#compact {{
+    padding: 4px 11px;
+    font-size: 9pt;
+}}
+
 QPushButton#primary {{
     background: {ACCENT};
     color: #0d1116;

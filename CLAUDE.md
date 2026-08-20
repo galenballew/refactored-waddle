@@ -68,6 +68,8 @@ ui/           only package that touches Qt
               the two triggers that send a summoned box back to its slot
   overview.py the tile grid. Double-click opens a box
   detail.py   one box: live view, trajectory panel, chat
+  motion.py   the animation vocabulary: one animatable number with a callback,
+              and the per-box `TileMotion` both views read. Not a timer
   theme.py    the palette, the fonts, and the stylesheet
   text.py     URL captions. `clip` takes a measuring function, not a font,
               so nothing here knows which toolkit is drawing
@@ -154,6 +156,30 @@ with a correctness constraint worth testing.
 - **Two timers, deliberately.** `refresh` is the layout tick at 1s; `pump` drains
   the children at 50ms. Do not merge them: chat on a one-second boundary reads as
   broken, and running the desktop-repair work fifty times a second is waste.
+- **Animation is not a third timer, and must not become one.** `ui/motion.py`
+  runs on Qt's own animation clock, only while something is moving, and every
+  redraw it asks for goes through `App.request_draw`, which collapses a frame's
+  worth of moved values into one `draw()` on the next turn of the event loop.
+  Without that coalescing, five boxes with four animated values each ask for
+  twenty redraws per frame, and a draw re-places every thumbnail. An idle fleet
+  must animate nothing: `App.motion_idle()` is what says so, and `verify.py`
+  waits on it before reading pixels, because a tile caught mid-fade is a real
+  colour and the wrong answer.
+- **Motion says "this just changed" and then stops.** Nothing loops, blinks or
+  breathes. The attention swell on `needs input` and `failed` is two beats and
+  done — a pulse that never stops is a colour you learn to ignore, and it would
+  compete with five live browsers forever. Anything perpetual is a bug.
+- **Reversing an animation asks about its destination, not its value.** A value
+  one frame into a fade has not moved yet, so a guard that compares `get()`
+  decides the reversal is a no-op and leaves the original running to its old
+  end. That is how a tile stays lit after the pointer has left it.
+  `Value.headed_for` exists for this and is what `set_hover` asks.
+- **Hover lives outside the tile rect, like everything else this app paints.**
+  Frame, caption and cursor. A scrim or a label across a tile is invisible —
+  thumbnails composite above it — and the only way to draw there is to hide the
+  live view of the box being pointed at, which is worse than having no hover
+  state. `CARD_INSET` is the whole budget: a heavier frame or an outer glow runs
+  into the neighbouring card.
 - **`session.py` decides nothing.** State changes come from the driver. A view
   that sets a state itself is a bug, however convenient.
 - **Nothing is broadcast any more.** The dashboard has no fan-out control at all: a
@@ -210,7 +236,22 @@ with a correctness constraint worth testing.
   1.5x larger than the window it mirrors, which DWM paints partially and in
   silence. Check [7] only catches that on a display where the cap actually binds,
   and this machine is not one — tiles top out at 1226x654 against a 1440x770 page
-  — so smoke check [14] pins the arithmetic in both directions instead.
+  — so smoke check [15] pins the arithmetic in both directions instead.
+- **The grid's spare height belongs to the captions, never to the thumbnails.**
+  Aspect-locked cells cannot fill their area in both directions, so one axis is
+  always slack — ~230px of it vertically at 1600x1000. It is not removable:
+  bigger tiles need a different aspect or fewer columns, and fewer columns makes
+  them smaller, which `_best_columns` has already established by picking the
+  count it did. `label_max` spends what it needs of that slack on the caption
+  strip and the rest stays a centred margin on purpose; distributing it between
+  the rows would fill the panel but leave a grid gapped 66px vertically and 20px
+  horizontally, which reads as a mistake. Growing a *thumbnail* out of slack
+  instead is the silent-crop bug the `max_thumb` cap exists to prevent, and
+  smoke check [15] pins the two against each other.
+- **`show`/`hide` on the view protocol have a caller now.** They had none
+  through the port, which meant `DetailView.show` never ran and opening a box
+  left the keyboard nowhere — you had to click the chat input before you could
+  type. `App._switch` calls both. Smoke check [7] pins it.
 - **Never change a Qt window flag to raise, lower or restyle the window.** Qt
   destroys and recreates the native window when a flag changes, and every DWM
   thumbnail is registered against that HWND: they would all go blank at once, with

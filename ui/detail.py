@@ -50,7 +50,8 @@ Controls = namedtuple("Controls", "send stop input")
 NORMAL, DISABLED = "normal", "disabled"
 
 PAD = 14
-TRAJECTORY_W = 340
+TRAJECTORY_MIN_W = 300
+TRAJECTORY_MAX_W = 460
 CHAT_LINES = 5
 EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
               "separate process, driving the browser in the live view.")
@@ -107,6 +108,7 @@ class DetailView:
     def _build_header(self):
         header = QHBoxLayout()
         self.back_button = QPushButton("←  Back")
+        self.back_button.setObjectName("compact")
         self.back_button.clicked.connect(self.app.show_overview)
         header.addWidget(self.back_button)
 
@@ -134,11 +136,13 @@ class DetailView:
         header.addSpacing(10)
 
         self.close_button = QPushButton("Close box")
+        self.close_button.setObjectName("compact")
         self.close_button.clicked.connect(self.close_box)
         header.addWidget(self.close_button)
         header.addSpacing(8)
 
         self.control_button = QPushButton("Take control")
+        self.control_button.setObjectName("compact")
         self.control_button.clicked.connect(self.take_control)
         header.addWidget(self.control_button)
         return header
@@ -148,11 +152,18 @@ class DetailView:
         middle.setSpacing(PAD)
 
         self.canvas = ViewportCanvas(self)
-        middle.addWidget(self.canvas, 1)
+        middle.addWidget(self.canvas, 5)
 
         panel = QFrame()
         panel.setObjectName("panel")
-        panel.setFixedWidth(TRAJECTORY_W)
+        # Proportional between bounds rather than one fixed width. The mirror
+        # beside it is aspect-locked and letterboxed inside whatever it is given,
+        # so on a wide display a fixed 340px panel does not take space from the
+        # live view -- it leaves it as background either side of it. Below the
+        # minimum a trajectory line is all ellipsis; above the maximum the panel
+        # is mostly empty and reading across to it becomes a head movement.
+        panel.setMinimumWidth(TRAJECTORY_MIN_W)
+        panel.setMaximumWidth(TRAJECTORY_MAX_W)
         column = QVBoxLayout(panel)
         column.setContentsMargins(10, 10, 10, 10)
         column.setSpacing(4)
@@ -161,7 +172,7 @@ class DetailView:
         column.addWidget(heading)
         self.trajectory = self._text(self.small)
         column.addWidget(self.trajectory, 1)
-        middle.addWidget(panel)
+        middle.addWidget(panel, 2)
         return middle
 
     def _build_chat(self):
@@ -263,7 +274,6 @@ class DetailView:
         self.chip.setText(f"● {state}")
         self.chip.setStyleSheet(
             f"color: {theme.state_colour(state)}; background: transparent;")
-
         # Input is refused while a box is working, because the agent would drop
         # it: better a disabled box and a reason than a message that vanishes.
         working = state == session_model.WORKING
@@ -326,13 +336,43 @@ class DetailView:
             return
         # The same frame a tile gets, outside the mirror for the same reason: a
         # thumbnail composites above this widget, so a border on the boundary
-        # would be half eaten by it.
-        painter.setPen(QPen(theme.qcolour(theme.EDGE), 1))
+        # would be half eaten by it. It carries the state the same way too --
+        # crossfading, and swelling when the box wants you -- because you can be
+        # in here watching a box work and the moment it stops to ask something
+        # is the moment worth catching.
+        painter.setPen(QPen(*self._frame_pen()))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(
             rect.adjusted(-theme.CARD_INSET, -theme.CARD_INSET,
                           theme.CARD_INSET, theme.CARD_INSET),
             theme.RADIUS, theme.RADIUS)
+
+    def _frame_pen(self):
+        """Colour and weight for the mirror's frame, mid-transition included.
+
+        Idle is a plain edge here rather than the tile's brighter one: this
+        frame is a single large rectangle with nothing to be told apart from,
+        and at that size the same grey reads considerably louder.
+        """
+        mover = self.app.motion_of(self.box)
+        if mover is None:
+            return theme.qcolour(theme.EDGE), 1.0
+
+        def pen_for(state):
+            if state == session_model.IDLE:
+                return theme.qcolour(theme.EDGE), 1.0
+            return theme.state_qcolour(state), 2.0
+
+        was_colour, was_width = pen_for(mover.previous)
+        now_colour, now_width = pen_for(mover.state)
+        blend = mover.blend.get()
+        colour = theme.mix(was_colour, now_colour, blend)
+        width = was_width + (now_width - was_width) * blend
+        attention = mover.attention.get()
+        if attention:
+            colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
+            width += 1.6 * attention
+        return colour, width
 
     # -- inspection ---------------------------------------------------------
     #
@@ -373,6 +413,20 @@ class DetailView:
         """Screen centre of one named control, for the demo's pointer."""
         widget = self._controls.get(name)
         return self.app.centre_of(widget) if widget is not None else None
+
+    def focused_control(self):
+        """Which named control the keyboard would land in, or None.
+
+        `focusWidget()` rather than `hasFocus()` on purpose: the checks run
+        against a window that is not necessarily the active one, and a widget
+        that is this view's focus while the window is inactive still answers the
+        question being asked -- where does typing go when you come back.
+        """
+        focused = self.frame.focusWidget()
+        for name, widget in self._controls.items():
+            if widget is focused:
+                return name
+        return None
 
     def type_char(self, char):
         """Append one character to the chat box, as a keystroke would.
