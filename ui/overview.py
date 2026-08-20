@@ -353,8 +353,11 @@ class OverviewView:
         happened. Not a summary, not a score, and not a count of anything: an
         overview that ranked its boxes would be a different app.
         """
+        # Against the descent, not the baseline: a `p` or a `g` hangs below the
+        # baseline, and the strip is exactly as tall as the slack allowed. A
+        # two-pixel overflow here is a clipped descender on every tile.
         second = first_baseline + self.metrics.height() + 2
-        if second > tile.label.bottom - 2:
+        if second + self.metrics.descent() > tile.label.bottom:
             return
         sess = self.app.sessions.get(box.name)
         line = sess.steps[-1] if sess and sess.steps else ""
