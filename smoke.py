@@ -284,19 +284,16 @@ def check_scrollback(app, manager):
     box = manager.boxes[2]
     app.enter_detail(box)
     app.update()
-    transcript = app.detail.transcript
-    check("the transcript has scrolled content", transcript.yview()[0] > 0,
-          f"{transcript.yview()}")
+    scroll = app.detail.transcript_scroll
+    check("the transcript has scrolled content", scroll()[0] > 0, f"{scroll()}")
 
-    transcript.yview_moveto(0.0)
+    app.detail.scroll_transcript_to(0.0)
     app.detail.sync()
-    check("scrolling back survives a redraw", transcript.yview()[0] == 0.0,
-          f"{transcript.yview()}")
+    check("scrolling back survives a redraw", scroll()[0] == 0.0, f"{scroll()}")
 
-    transcript.yview_moveto(1.0)
+    app.detail.scroll_transcript_to(1.0)
     app.detail.sync()
-    check("but the end still follows", transcript.yview()[1] >= 0.999,
-          f"{transcript.yview()}")
+    check("but the end still follows", scroll()[1] >= 0.999, f"{scroll()}")
 
 
 def check_fleet(app, manager):

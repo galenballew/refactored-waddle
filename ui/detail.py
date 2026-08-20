@@ -24,12 +24,12 @@ import layout
 import session as session_model
 
 from . import theme
+from .text import short_url
 
 # What the three chat controls are doing: "normal" or "disabled" each. A child
 # drops input while it is working, and this is how the checks read whether the
 # view is telling the truth about that.
 Controls = namedtuple("Controls", "send stop input")
-from .text import short_url
 
 PAD = 12
 TRAJECTORY_W = 320
@@ -258,6 +258,15 @@ class DetailView:
 
     def hint_text(self):
         return self.hint.cget("text")
+
+    def transcript_scroll(self):
+        """Where the transcript is scrolled, as (first, last) fractions of its
+        height -- Tk's yview units, because the check is about whether a redraw
+        moves the reader and fractions say that in any toolkit."""
+        return self.transcript.yview()
+
+    def scroll_transcript_to(self, fraction):
+        self.transcript.yview_moveto(fraction)
 
     def controls(self):
         """Whether send, stop and the input are each enabled right now."""
