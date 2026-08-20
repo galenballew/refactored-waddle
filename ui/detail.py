@@ -47,8 +47,8 @@ NORMAL, DISABLED = "normal", "disabled"
 PAD = 14
 TRAJECTORY_W = 340
 CHAT_LINES = 5
-EMPTY_CHAT = ("No task yet. Whatever you send is run by a scripted stand-in — "
-              "there is no agent behind this box.")
+EMPTY_CHAT = ("No task yet. What you send is run by this box's own agent, in "
+              "the browser above — it opens pages, reads them and clicks links.")
 EMPTY_TRAJECTORY = "no activity yet"
 
 

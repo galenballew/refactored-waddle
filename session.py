@@ -2,8 +2,8 @@
 
 One Session per box, all in memory, forgotten when the app closes -- like the
 browser profiles. This is the model the dashboard renders; it decides nothing.
-When a state changes, something else changed it: today `fake_agent.py`, from M3
-a subprocess.
+When a state changes, something else changed it: a child process, one per box
+(`agent_host.py`), reported over a pipe.
 
 The five states are the whole vocabulary, and they are deliberately few:
 
