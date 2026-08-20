@@ -117,7 +117,7 @@ class App:
     # -- thumbnails ---------------------------------------------------------
 
     def register_all(self):
-        self.dest = thumbs.dest_hwnd(self.root)
+        self.dest = thumbs.top_level(self.root.winfo_id())
         for box in self.manager.boxes:
             self._register(box)
 
@@ -149,8 +149,17 @@ class App:
             thumbs.place(handle, (0, 0, 0, 0), visible=False)
 
     def client_offset(self, widget):
-        """Where a widget sits inside the root's client area -- rcDestination units."""
-        return thumbs.client_offset(self.dest, widget) if self.dest else (0, 0)
+        """Where a widget sits inside the root's client area -- rcDestination units.
+
+        The one place the toolkit's coordinate system meets DWM's, and so the one
+        place a toolkit that lays out in logical rather than physical pixels would
+        have to scale. Tk needs no scaling because DPI awareness makes its units
+        physical already; that is a fact about Tk, not about thumbnails.
+        """
+        if not self.dest:
+            return (0, 0)
+        origin_x, origin_y = thumbs.client_origin(self.dest)
+        return widget.winfo_rootx() - origin_x, widget.winfo_rooty() - origin_y
 
     def source_size(self):
         """The source windows' own pixel size: both the tile aspect and the size
@@ -312,6 +321,35 @@ class App:
     def refresh(self):
         self.tick()
         self.root.after(self.dash.get("refresh_ms", 1000), self.refresh)
+
+    # -- the window ---------------------------------------------------------
+    #
+    # Everything outside this class asks for window behaviour through these three
+    # rather than reaching for `self.root`, so the checks in smoke.py and
+    # verify.py are written against the dashboard and not against Tk.
+
+    def update(self):
+        """Process whatever events are already pending, once. Never blocks."""
+        self.root.update()
+
+    def set_topmost(self, on):
+        """Float the dashboard above other windows, or stop.
+
+        verify.py needs this: it BitBlts the screen to prove tiles are live, and
+        without it would sample whatever window happens to be in front and read
+        plausible-looking garbage.
+        """
+        self.root.attributes("-topmost", bool(on))
+        if on:
+            self.root.lift()
+
+    def set_maximized(self, on):
+        """Fill the work area, or go back.
+
+        Check [7] resizes because DWM will not reliably paint a thumbnail larger
+        than its source, and that failure is invisible at a small window size.
+        """
+        self.root.state("zoomed" if on else "normal")
 
     def quit(self):
         # Children first: they exit on their own when the pipe closes, but

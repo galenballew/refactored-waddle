@@ -17,12 +17,18 @@ be a rare thing to need.
 """
 
 import tkinter as tk
+from collections import namedtuple
 from tkinter import ttk
 
 import layout
 import session as session_model
 
 from . import theme
+
+# What the three chat controls are doing: "normal" or "disabled" each. A child
+# drops input while it is working, and this is how the checks read whether the
+# view is telling the truth about that.
+Controls = namedtuple("Controls", "send stop input")
 from .text import short_url
 
 PAD = 12
@@ -237,6 +243,26 @@ class DetailView:
                 (self.viewport.top + self.viewport.bottom) // 2,
                 text="no window", fill=theme.EMPTY_TEXT, font=self.font,
             )
+
+    # -- inspection ---------------------------------------------------------
+    #
+    # The checks read the view through these rather than through Tk widget
+    # APIs. `viewport` needs no accessor: it is already a layout.Rect and owes
+    # nothing to the toolkit.
+
+    def transcript_text(self):
+        return self.transcript.get("1.0", "end")
+
+    def trajectory_text(self):
+        return self.trajectory.get("1.0", "end")
+
+    def hint_text(self):
+        return self.hint.cget("text")
+
+    def controls(self):
+        """Whether send, stop and the input are each enabled right now."""
+        return Controls(str(self.send_button["state"]), str(self.stop_button["state"]),
+                        str(self.entry["state"]))
 
     def viewport_screen_rect(self):
         """The live view in screen coordinates, for verify.py."""

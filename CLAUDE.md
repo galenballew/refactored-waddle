@@ -192,7 +192,10 @@ with a correctness constraint worth testing.
   in DIPs and would need DPI conversion; HWND coordinates are already physical pixels.
 - **DPI awareness must be set before Tk is created** (`thumbs.set_dpi_awareness()` in
   `main.py`). With it on, Tk pixel units and DWM client coordinates are both physical
-  pixels and no conversion is needed anywhere. Dev machine runs at 150%.
+  pixels and no conversion is needed anywhere. Dev machine runs at 150%. That
+  equivalence is a property of **Tk**, not of the call: a toolkit that lays out in
+  logical units has to scale where it meets `rcDestination`, and `App.client_offset()`
+  is the one place that would happen.
 - **Ephemeral profiles.** No persistent user-data-dir, no isolation guarantees, no
   cross-box checks. Do not describe this as a security boundary.
 - **The fleet changes at runtime.** `config.json` is only the starting list: "+ Add
@@ -216,9 +219,11 @@ with a correctness constraint worth testing.
 Learned the hard way; all of these will silently produce a blank or wrong tile.
 
 - The destination must be a **top-level** window. Tk's `winfo_id()` is a child and
-  returns `E_INVALIDARG`; use `thumbs.dest_hwnd()`, which walks to `GA_ROOT`.
-- `rcDestination` is in the destination window's **client** coordinates. Offset canvas
-  coordinates by `thumbs.client_offset()`.
+  returns `E_INVALIDARG`; pass it through `thumbs.top_level()`, which walks to `GA_ROOT`.
+- `rcDestination` is in the destination window's **client** coordinates. `thumbs`
+  gives you that origin (`client_origin()`); turning a widget's position into an
+  offset from it is `App.client_offset()`, in `ui/`, because only the toolkit knows
+  where its widgets are or what units they answer in.
 - Thumbnails always composite **above** the destination's own content. Anything drawn
   under a tile is invisible, so labels go outside the tile rect.
 - A **minimized or virtual-desktop-cloaked** source renders nothing. Occluded is fine,
@@ -275,6 +280,13 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
   word about its work is not evidence.
 - Checks that read pixels off tiles need the **overview** showing. Check [4] enters
   and leaves the detail view, so it puts the overview back before it returns.
+- **Neither `smoke.py` nor `verify.py` may touch a Tk widget.** They drive the app
+  through `App.update/set_topmost/set_maximized` and read the views through the
+  inspection methods on each (`canvas_size`, `jump_text`, `transcript_text`,
+  `trajectory_text`, `hint_text`, `controls`), and they ask for a double-click as
+  `overview.double_click(x, y)` rather than by faking an event object. A check
+  written against `cget()` or `widget["state"]` is a check about Tk, not about the
+  dashboard. `demo.py` is the exception and is still Tk all the way through.
 
 ## What this is not — do not add
 

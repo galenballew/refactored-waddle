@@ -29,7 +29,6 @@ import ctypes
 import sys
 import tempfile
 import time
-import types
 from ctypes import wintypes
 from pathlib import Path
 
@@ -115,7 +114,7 @@ def default_url():
 def pump(app, seconds=1.0):
     deadline = time.time() + seconds
     while time.time() < deadline:
-        app.root.update()
+        app.update()
         time.sleep(0.02)
 
 
@@ -231,7 +230,7 @@ def check_tilemap(app, manager):
     print(f"    {len(tiles)} tiles for {count} boxes plus the add tile"
           f"  {'ok' if ok else 'FAIL'}")
 
-    width, height = overview.canvas.winfo_width(), overview.canvas.winfo_height()
+    width, height = overview.canvas_size()
     for tile in tiles:
         inside = (
             0 <= tile.cell.left and tile.cell.right <= width
@@ -256,11 +255,10 @@ def check_tilemap(app, manager):
                     ok = False
 
     # Double-clicking tile i must open box i, and Back must come home again.
-    # The handler only reads x and y off the event, so a stand-in will do.
     for tile in tiles[:count]:  # the add tile opens nothing
         centre_x = (tile.cell.left + tile.cell.right) // 2
         centre_y = (tile.cell.top + tile.cell.bottom) // 2
-        overview.on_double_click(types.SimpleNamespace(x=centre_x, y=centre_y))
+        overview.double_click(centre_x, centre_y)
         expected = manager.boxes[tile.index]
         opened = app.box is expected and app.view is app.detail
         app.show_overview()
@@ -278,8 +276,7 @@ def check_live_tiles(app, manager):
     # BitBlts the screen and would otherwise measure whatever window happens to
     # be in front of it. Topmost only for the duration of the sampling; it
     # changes nothing about the thumbnails being tested.
-    app.root.attributes("-topmost", True)
-    app.root.lift()
+    app.set_topmost(True)
     pump(app, 0.3)
     for name in ("red", "blue"):
         manager.navigate_all(colour_page(name))
@@ -300,7 +297,7 @@ def check_live_tiles(app, manager):
             print(f"    {name:<4} {box.name:<8} RGB=({r:5.1f},{g:5.1f},{b:5.1f})"
                   f"  {'ok' if good else 'FAIL'}")
             ok = ok and good
-    app.root.attributes("-topmost", False)
+    app.set_topmost(False)
     return ok
 
 
@@ -328,12 +325,11 @@ def check_resize(app, manager):
     print("\n[7] tiles stay whole when the dashboard is resized")
     manager.navigate_all(colour_page("red"))
     pump(app, 2.0)
-    app.root.attributes("-topmost", True)
-    app.root.lift()
+    app.set_topmost(True)
     ok = True
     source = app.source_size()
-    for state, label in (("zoomed", "maximized"), ("normal", "restored")):
-        app.root.state(state)
+    for maximized, label in ((True, "maximized"), (False, "restored")):
+        app.set_maximized(maximized)
         pump(app, 1.5)
         app.draw()
         pump(app, 0.5)
@@ -347,7 +343,7 @@ def check_resize(app, manager):
                   f"corner=({r:5.1f},{g:5.1f},{b:5.1f}) within_source={within}"
                   f"  {'ok' if good else 'FAIL'}")
             ok = ok and good
-    app.root.attributes("-topmost", False)
+    app.set_topmost(False)
     if source:
         print(f"    source windows are {source[0]}x{source[1]}; tiles never exceed that")
     return ok

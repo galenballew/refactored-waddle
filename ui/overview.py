@@ -226,17 +226,40 @@ class OverviewView:
 
     # -- actions ------------------------------------------------------------
 
+    # Tk hands these an event object; the real work takes plain coordinates, so
+    # that the checks can ask for a double-click without faking an event.
+
     def on_double_click(self, event):
-        index = layout.hit_test(self.tiles, event.x, event.y)
+        self.double_click(event.x, event.y)
+
+    def on_click(self, event):
+        self.click(event.x, event.y)
+
+    def double_click(self, x, y):
+        index = layout.hit_test(self.tiles, x, y)
         if index is None or index >= len(self.app.manager.boxes):
             return  # the add tile is a button; one click is enough
         self.app.enter_detail(self.app.manager.boxes[index])
 
-    def on_click(self, event):
-        index = layout.hit_test(self.tiles, event.x, event.y)
+    def click(self, x, y):
+        index = layout.hit_test(self.tiles, x, y)
         if index is None or index < len(self.app.manager.boxes):
             return  # a single click on a box does nothing; double-click opens it
         self.add_box()
+
+    # -- inspection ---------------------------------------------------------
+    #
+    # smoke.py and verify.py ask their questions through these rather than
+    # through Tk widget APIs, so a check reads as a claim about the dashboard
+    # and does not have to be rewritten when the toolkit changes.
+
+    def canvas_size(self):
+        """The tile area, in the units `layout.tile_rects` lays out in."""
+        return self.canvas.winfo_width(), self.canvas.winfo_height()
+
+    def jump_text(self):
+        """What the go-to-the-waiting-box button is currently offering."""
+        return self.jump.cget("text")
 
     def add_box(self):
         """Launch one more box, having first said that it is happening.

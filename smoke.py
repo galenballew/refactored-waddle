@@ -106,7 +106,7 @@ def pump(app, seconds):
     """Run the event loop for real, so the app's own timers fire."""
     deadline = time.time() + seconds
     while time.time() < deadline:
-        app.root.update()
+        app.update()
         time.sleep(0.005)
 
 
@@ -123,11 +123,11 @@ def check_views(app, manager):
     check("starts on the overview", app.view is app.overview and app.box is None)
 
     tile = tiles[2]
-    app.overview.on_double_click(types.SimpleNamespace(
-        x=(tile.cell.left + tile.cell.right) // 2,
-        y=(tile.cell.top + tile.cell.bottom) // 2,
-    ))
-    app.root.update()
+    app.overview.double_click(
+        (tile.cell.left + tile.cell.right) // 2,
+        (tile.cell.top + tile.cell.bottom) // 2,
+    )
+    app.update()
     check("double-click opens that box",
           app.view is app.detail and app.box is manager.boxes[2])
 
@@ -138,7 +138,7 @@ def check_views(app, manager):
           f"{view.right - view.left}x{view.bottom - view.top}")
 
     app.show_overview()
-    app.root.update()
+    app.update()
     check("back returns to the overview", app.view is app.overview and app.box is None)
 
 
@@ -177,9 +177,9 @@ def check_task(app, manager):
     app.send(box, "the Team plan")
     settle(app, 6)
     check("answering finishes the task", state.state == model.DONE, state.state)
-    body = app.detail.transcript.get("1.0", "end")
+    body = app.detail.transcript_text()
     check("both speakers rendered", "you" in body and box.name in body)
-    check("trajectory rendered", "clicked" in app.detail.trajectory.get("1.0", "end"))
+    check("trajectory rendered", "clicked" in app.detail.trajectory_text())
 
     before = list(state.steps)
     app.send(box, "check the changelog")
@@ -227,8 +227,8 @@ def check_controls(app, manager):
     state = app.sessions[box.name]
 
     def controls():
-        return (str(app.detail.send_button["state"]),
-                str(app.detail.stop_button["state"]))
+        state = app.detail.controls()
+        return (state.send, state.stop)
 
     check("idle: send on, stop off", controls() == ("normal", "disabled"), controls())
 
@@ -237,18 +237,18 @@ def check_controls(app, manager):
     state.state = model.WORKING
     app.detail.sync()
     check("working: send off, stop on", controls() == ("disabled", "normal"), controls())
-    check("the input is refused too", str(app.detail.entry["state"]) == "disabled")
-    check("and it says why", "Stop" in app.detail.hint.cget("text"))
+    check("the input is refused too", app.detail.controls().input == "disabled")
+    check("and it says why", "Stop" in app.detail.hint_text())
 
     state.state = model.NEEDS_INPUT
     app.detail.sync()
     check("needs input: send on, stop on", controls() == ("normal", "normal"), controls())
     check("and it says what a reply means",
-          "answers" in app.detail.hint.cget("text"))
+          "answers" in app.detail.hint_text())
 
     state.state = model.IDLE
     app.detail.sync()
-    check("idle again: no hint", app.detail.hint.cget("text") == "")
+    check("idle again: no hint", app.detail.hint_text() == "")
 
 
 def check_attention(app, manager):
@@ -267,14 +267,14 @@ def check_attention(app, manager):
     check("the counts add up", sum(counts.values()) == len(manager.boxes), counts)
 
     app.show_overview()
-    app.root.update()
+    app.update()
     order = [t.index for t in app.overview.tiles]
     check("the button offers the waiting box",
-          box.name in app.overview.jump.cget("text"), app.overview.jump.cget("text"))
+          box.name in app.overview.jump_text(), app.overview.jump_text())
     check("tiles did not reorder", order == sorted(order))
 
     app.overview.go_to_waiting()
-    app.root.update()
+    app.update()
     check("and it opens that box", app.box is box)
 
 
@@ -283,7 +283,7 @@ def check_scrollback(app, manager):
     print("\n[7] scrollback")
     box = manager.boxes[2]
     app.enter_detail(box)
-    app.root.update()
+    app.update()
     transcript = app.detail.transcript
     check("the transcript has scrolled content", transcript.yview()[0] > 0,
           f"{transcript.yview()}")
@@ -316,7 +316,7 @@ def check_fleet(app, manager):
     check("and a child of its own", app.agents[box.name].alive)
 
     app.show_overview()
-    app.root.update()
+    app.update()
     check("the grid grew, and still ends with the add tile",
           len(app.overview.tiles) == start + 2, len(app.overview.tiles))
 
@@ -332,9 +332,9 @@ def check_fleet(app, manager):
 
     proc = app.agents[box.name].proc
     app.enter_detail(box)
-    app.root.update()
+    app.update()
     app.detail.close_box()
-    app.root.update()
+    app.update()
     check("closing a box removes it", box not in manager.boxes)
     check("its session goes with it", box.name not in app.sessions)
     check("its child is stopped", proc.poll() is not None, proc.poll())
@@ -568,7 +568,7 @@ def check_geometry():
 def main():
     manager = FakeManager(load_config())
     app = App(manager)
-    app.root.update()
+    app.update()
     try:
         check_views(app, manager)
         check_children(app)
