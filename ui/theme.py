@@ -9,7 +9,11 @@ the state vocabulary.
 The one rule the design cannot argue with: a DWM thumbnail composites above
 everything this app paints, so all of it -- frames, captions, shadows -- lives
 outside the rectangle a tile occupies. That is why tiles are framed rather than
-overlaid, and why there is no hover scrim anywhere.
+overlaid, and why there is no hover scrim anywhere: hover is a lift of the frame
+and the caption, not a wash over the tile. `mix` is here rather than in
+`ui/motion.py` because interpolating two of these colours is a question about
+the palette -- they were chosen at a similar lightness precisely so a crossfade
+between any two of them does not dip through mud on the way.
 
 None of Tk's escape hatches are needed. A Qt stylesheet reaches every widget,
 themed or not, so there is no "use a classic widget to make the colour stick"

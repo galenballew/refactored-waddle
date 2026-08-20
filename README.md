@@ -45,12 +45,20 @@ two views.
 continuously updating view of that browser — not a screenshot taken once at
 startup. The window name, what it is doing, and its current page are printed
 under each tile, and a coloured ring around a tile repeats its state so you can
-read the fleet at a glance. Along the top is a count of how many windows are in
-each state, and a button that opens whichever one is waiting on you — tiles never
-reorder themselves, so the fleet always looks the same shape. Tiles show the whole
-browser window, so you will see its tab strip and address bar above the page
-itself. The last cell of the grid is **+ Add box**, which starts another window
-there and then.
+read the fleet at a glance. When the grid has room to spare, a second line under
+each tile shows the last thing that window actually did. Along the top is a count
+of how many windows are in each state, and a button that opens whichever one is
+waiting on you — tiles never reorder themselves, so the fleet always looks the
+same shape. Tiles show the page only: the browser's own tab strip and address bar
+are cropped out, so five tiles read as a dashboard rather than as five
+screenshots of a browser. The last cell of the grid is **+ Add box**, which starts
+another window there and then.
+
+Moving the pointer over a tile lifts its frame and caption and turns the cursor
+into a hand, which is the affordance for double-clicking it open. Nothing is ever
+drawn *over* a tile — the live mirror is composited above everything the app
+paints, so the only way to draw across one would be to blank the window you are
+pointing at.
 
 Five states, and no others:
 
@@ -66,12 +74,19 @@ Five states, and no others:
 want you. Every state is spelled out in words next to its colour, so the colour
 is never the only signal.
 
+A window changing state does not simply be a different colour the next time you
+look: its frame crossfades to the new one, and for `needs input` and `failed` it
+also swells twice and settles. Two beats is enough to catch an eye that was
+somewhere else, and then it stops — nothing here blinks, breathes or loops, and
+an idle fleet animates nothing at all.
+
 **Double-click a tile** to open that window's own view, which fills the
 dashboard:
 
 - **The live view** — the same live mirror, as large as the window allows.
-- **A chat panel** along the bottom. Type and press Enter to give that window a
-  task; what it says back appears here. Each window keeps its own conversation,
+- **A chat panel** along the bottom. It already has the keyboard when the view
+  opens, so you can type straight away. Type and press Enter to give that window
+  a task; what it says back appears here. Each window keeps its own conversation,
   and they are forgotten when the app closes. A line under the transcript says
   what the window will do with what you type next.
 - **Send and Stop.** While a window is working the input is disabled — it would
@@ -283,9 +298,10 @@ second:
 ```
 
 It builds the real dashboard against stand-in windows and spawns the real agent
-processes, then checks the views, the message protocol, the five states, what
-happens when an agent process dies mid-task, and that closing the dashboard takes
-its agent processes with it. Run this one while you work.
+processes, then checks the views, the message protocol, the five states, that the
+chrome moves when something changes and stops moving when it stops, what happens
+when an agent process dies mid-task, and that closing the dashboard takes its
+agent processes with it. Run this one while you work.
 
 The thorough one needs real windows:
 
