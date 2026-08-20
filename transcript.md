@@ -7,18 +7,34 @@ console as it runs, so a take can be lined up against its own log:
 .venv\Scripts\python.exe demo.py
 ```
 
-Times are nominal, from a run at `--pace 1.0`. Real ones move — a cold agent
-child spends a second or two starting Playwright, and the model beat takes as
-long as the model takes — so cut against the beat sheet `demo.py` prints when it
-finishes, not against the numbers here.
+Times are nominal, from a run at `--pace 1.0`. Real ones move — these are real
+websites over a real network, a cold agent child spends a second or two starting
+Playwright, and the model act takes as long as the models take. Cut against the
+beat sheet `demo.py` prints when it finishes, not against the numbers here.
 
 Read at about 150 words a minute. Each beat gives its word budget; every line
-below is inside it, most with room to spare. Nothing here needs to be said over
-the top of the action — the holds are long enough to land a sentence and then
-show the thing.
+below is inside it. Nothing needs to be said over the top of the action — the
+holds are long enough to land a sentence and then show the thing.
 
-Rehearse with `--no-claude`. It is the same film minus the last beat, and the
-last beat is the only one that spends money.
+Rehearse with `--no-claude`. It is the same film with the script driving the last
+act instead of three Claude agents, and it is the only way to run this without
+spending money.
+
+## The sites, and why those sites
+
+Eight real websites appear: NPR, CNN, the first website ever published at CERN,
+example.com, the RFC editor, Wikipedia, Hacker News and the Python docs. Nothing
+signs in, fills in a form, or changes anything anywhere — every box reads pages
+and clicks links, which is all the agents can do.
+
+The split between them is load-bearing, and worth knowing before anyone edits the
+list. The scripted agent clicks the **first** `a[href]` on the page, and on most
+modern sites that is a hidden "Skip to content" link: Playwright waits for it to
+become clickable, times out, and the box ends `failed`. Wikipedia, MDN and the
+Python docs all behave that way. So the boxes driven by the script get pages whose
+first link is really on the page, and the harder sites are given to the model act,
+which clicks by visible text and never touches a skip link. Swapping Wikipedia
+into the opening fan-out will break the take.
 
 ---
 
@@ -43,40 +59,43 @@ that shows nothing but the dashboard, and an empty taskbar.
 
 ---
 
-## four boxes get a task inside two seconds · 0:05 · 2s · 8 words
+## three boxes open three real websites at once · 0:05 · 2s · 15 words
 
-**On screen:** four tasks typed into four boxes in under two seconds. box4 is
+**On screen:** three tasks typed into three boxes in under two seconds. box4 is
 left alone on purpose; it is needed cold later.
 
-> Four of them get a task at once.
+> Three of them get a task at once. Real sites, on the real internet.
 
 ---
 
-## states diverge: working to done, and one stops to ask · 0:07 · ~10s · 60 words
+## states diverge: working to done, and one stops to ask · 0:07 · ~15s · 70 words
 
-**On screen:** the counts in the header moving on their own, rings going amber
-then green, URLs changing under the tiles, and box5 landing on `needs input` —
-which lights up the jump button.
+**On screen:** NPR, CNN and the first website ever published, loading in three
+tiles at the same time. The NPR tile turns from a page of text into an ordinary
+news homepage when the agent clicks through to the full site. Counts move in the
+header, rings go amber then green, and box5 lands on `needs input`, which lights
+up the jump button.
 
-> Nobody is driving now. The counts move on their own, pages load in windows that
-> are nowhere on your screen, and the tiles stay where they are — nothing here
-> reorders, ranks or scores anything. One box stops. It was not given a URL and it
-> is not going to guess, so it asks. That is `needs input`, and it is one of the
-> two states worth looking for.
+> Nobody is driving now. Three ordinary Chromium windows, three real websites,
+> loading at once in windows that are nowhere on your screen. The counts move on
+> their own and the tiles stay where they are — nothing here reorders, ranks or
+> scores anything. Then one box stops. It was not given a URL and it is not going
+> to guess, so it asks. That is `needs input`, and it is one of the two states
+> worth looking for.
 
 ---
 
-## jump straight to the box that needs you · 0:17 · ~3s · 22 words
+## jump straight to the box that needs you · 0:24 · ~3s · 22 words
 
-**On screen:** the pointer glides to the header button, which now reads
-`go to box5 →`, and the detail view opens on box5 with its question in the chat.
+**On screen:** the pointer glides to the header button, now reading `go to box5 →`,
+and the detail view opens on box5 with its question in the chat.
 
 > The button in the corner goes to whoever is waiting. It points at the next one;
 > it does not decide which one matters.
 
 ---
 
-## answer its question; it carries on from there · 0:20 · ~8s · 25 words
+## answer its question; it carries on from there · 0:27 · ~9s · 25 words
 
 **On screen:** a URL typed into box5's chat, Send, and the run resuming — the
 trajectory filling and the state going to `done`.
@@ -86,10 +105,10 @@ trajectory filling and the state going to `done`.
 
 ---
 
-## detail view: live mirror, trajectory, chat · 0:28 · ~8s · 55 words
+## detail view: live mirror, trajectory, chat · 0:36 · ~8s · 55 words
 
-**On screen:** back to the overview, double-click box1, hold on the full detail
-view — big live mirror, trajectory panel, chat, the state chip beside the name.
+**On screen:** back to the overview, into box1, and a hold on the full detail
+view — the NPR homepage mirrored large, trajectory panel, chat, state chip.
 
 > Double-click any tile to get that box on its own. The same live mirror, bigger.
 > Its conversation along the bottom. And on the right, the trajectory: every page
@@ -98,7 +117,7 @@ view — big live mirror, trajectory panel, chat, the state chip beside the name
 
 ---
 
-## stop a run mid-flight · 0:36 · ~11s · 55 words
+## stop a run mid-flight · 0:44 · ~12s · 55 words
 
 **On screen:** box4 gets its first task. The input greys out and Stop becomes the
 live button; the pointer moves to Stop and presses it. The box drops to `idle`
@@ -111,19 +130,20 @@ and the trajectory stays on screen.
 
 ---
 
-## take control: the real window, on the desktop, with the keyboard · 0:47 · ~9s · 45 words
+## take control: the real window, on the desktop, with the keyboard · 0:56 · ~10s · 55 words
 
-**On screen:** Take control, the real Chromium window arriving on the middle of
-the screen, real characters appearing in the page's text field, and the tile
-behind it still updating.
+**On screen:** Take control, and the real Chromium window arrives on the middle of
+the screen. Ctrl+F opens Chrome's own find bar, `CNN` is typed into it, and the
+matches highlight down the page. Escape closes it. The tile behind is still
+updating.
 
-> The mirror cannot be clicked into. When you need to type into a page yourself,
-> Take control brings the real window out and gives it the keyboard. Only one is
-> ever out at a time.
+> The mirror cannot be clicked into. When you need the page yourself, Take control
+> brings the real window out and gives it the keyboard — and that is Chrome's own
+> find bar answering it, on a real page. Only one window is ever out at a time.
 
 ---
 
-## look back at the dashboard and it parks itself · 0:56 · ~3s · 18 words
+## look back at the dashboard and it parks itself · 1:06 · ~3s · 18 words
 
 **On screen:** focus returns to the dashboard; the browser window vanishes back
 to its slot; its tile carries on as if nothing happened.
@@ -133,10 +153,10 @@ to its slot; its tile carries on as if nothing happened.
 
 ---
 
-## + Add box, live · 0:59 · ~13s · 50 words
+## + Add box, live · 1:09 · ~13s · 50 words
 
 **On screen:** the add tile, the `launching…` frame, the grid reflowing to six,
-and box6 taking a task of its own.
+and box6 opening an RFC of its own.
 
 > The fleet is not fixed at five. Add box starts another one: it launches, parks
 > itself, and gets a tile, an agent process and a conversation like everything
@@ -145,7 +165,7 @@ and box6 taking a task of its own.
 
 ---
 
-## close box: window, agent and conversation, gone · 1:12 · ~5s · 25 words
+## close box: window, agent and conversation, gone · 1:22 · ~6s · 25 words
 
 **On screen:** box6's detail view, Close box, the grid back to five.
 
@@ -154,45 +174,72 @@ and box6 taking a task of its own.
 
 ---
 
-## same seam, different driver: Claude takes box2 · 1:17 · ~8s · 45 words
+## same seam, different driver: Claude takes three boxes · 1:28 · ~4s · 40 words
 
-**On screen:** box2's detail view — its earlier conversation still in the chat —
-and a question typed in that no fixed script could answer.
+**On screen:** three notes in the console as each child is replaced; the boxes'
+existing conversations still in place.
+
+**With `--no-claude`** the beat prints as
+**the same three questions, with the script still driving** instead, and the act
+below shows the script getting as far as a script can. Use it to rehearse; do not
+narrate it as the real thing.
 
 > Everything so far ran on a script: find a URL, open it, look at it, click the
-> first link. Nothing called a model. This is the same box and the same interface,
-> but its agent process is a Claude loop now.
+> first link. Nothing called a model. Now three of these boxes get a Claude loop
+> instead — same interface, same seam, different thing behind it.
 
 ---
 
-## the model picks its own tools, and reports what it cost · 1:25 · 20–40s · 70 words
+## three boxes, three real sites, three questions at once · 1:32 · ~10s · 45 words
 
-**On screen:** the trajectory filling with tool calls nobody scripted — `goto`,
-`read_page`, `screenshot`, `click` — then the answer in the chat and the cost on
-the last trajectory line.
+**On screen:** three questions sent in under two seconds — Wikipedia on
+hypervisors, the Hacker News front page, the Python `pathlib` docs — and three
+tiles going to work at the same time.
 
-**Variable length.** The model decides how many turns it needs, so hold the last
-sentence until the cost line appears. `demo.py` prints how box2 ended.
-
-> It chooses what to do: open the page, read it, look at it, click something. The
-> question needs the page read and a judgement about what it says, which the script
-> could not do at all. The last line of the trajectory is what it cost — turns,
-> tokens in, tokens out. Twelve turns and it gives up. A loop that will not
-> converge is a bill.
-
-**If it ends `needs input` instead** (the model asks something back), the beat is
-better, not worse:
-
-> It can also stop and ask you something of its own. Same state, same chat, and
-> your answer goes straight back to it.
-
-**If it ends `failed`**, say so and move on — do not cut around it:
-
-> That one failed, and it says why. Nothing else in the fleet noticed.
+> Three questions, three real sites, at once. Which hypervisor is which, and name
+> an example of each. What is top of Hacker News right now and how many comments
+> it has. Which pathlib method writes a file, and what it does if the file is
+> already there.
 
 ---
 
-## close the dashboard; every window goes with it · ~1:55 · ~3s · 25 words
+## watch one of them think · 1:42 · ~11s · 45 words
+
+**On screen:** box2's detail view while it works — the trajectory filling with
+tool calls nobody scripted: `goto`, `read_page`, `screenshot`, `click`. The other
+two carry on behind it.
+
+> It chooses what to do and in what order: open the page, read it, look at it,
+> click something. None of these questions is answerable by opening a URL and
+> clicking the first link, which is all the script could ever do.
+
+---
+
+## the answers, and what they cost · 1:53 · 20–60s · 60 words
+
+**On screen:** the three answers landing in three chats, then the overview with
+three boxes on `done`. The last line of each trajectory is its cost.
+
+**Variable length.** The models decide how many turns they need. Hold the last
+sentence until the cost lines appear; `demo.py` prints how each box ended.
+
+> Three answers, from three pages that none of us read. The last line of each
+> trajectory is what it cost — turns, tokens in, tokens out. Twelve turns and a box
+> gives up and says so. A loop that will not converge is a bill.
+
+**If one ends `needs input`** (a model asks something back), the beat is better,
+not worse:
+
+> That one stopped to ask a question of its own. Same state, same chat, and your
+> answer goes straight back to it.
+
+**If one ends `failed`**, say so and move on — do not cut around it:
+
+> That one failed, and it says why. The other two never noticed.
+
+---
+
+## close the dashboard; every window goes with it · ~2:45 · ~3s · 25 words
 
 **On screen:** the overview, then the app closing. Optionally cut to Task Manager
 with no Chromium left.
@@ -204,17 +251,21 @@ with no Chromium left.
 
 ## Cutting it shorter
 
-Roughly two minutes as written. To get under ninety seconds, drop in this order:
+Roughly two and three quarter minutes as written; the model act is what varies.
+To get under two minutes, drop in this order:
 
-1. **close box** (1:12) — add box already makes the point.
+1. **close box** (1:22) — add box already makes the point.
 2. **look back at the dashboard and it parks itself** — fold its one line into
    the take-control beat.
 3. **detail view: live mirror, trajectory, chat** — the answer-its-question beat
    has already shown the detail view; this one only dwells on it.
+4. **watch one of them think** — the trajectory is visible again in the beat
+   after it, though this is the clearest look at a model choosing its own tools.
 
-Do not drop the divergence beat at 0:07 or the model beat at 1:25. The first is
-the only shot that shows a fleet rather than an app, and the second is the only
-one that shows the seam holding when the driver changes.
+Do not drop the divergence beat at 0:07 or the two model beats. The first is the
+only shot that shows a fleet rather than an app; the others are the only ones that
+show the seam holding when the driver changes, on questions no script could
+answer.
 
 ## Things worth not saying
 
@@ -225,6 +276,9 @@ The app is careful about a few claims, and the narration should be too.
 - Separate browser launches keep cookies apart **in practice**. It is not a
   security boundary and is not tested as one.
 - The scripted agent really drives the browser, but what it *decides* is a fixed
-  sequence. Do not call it intelligent.
+  sequence. Do not call it intelligent — and do not imply the model act is what
+  was running earlier.
 - Nothing is broadcast to the boxes — no clicks, no keystrokes, no fan-out URL
   bar. If someone asks, that is a decision, not a gap.
+- The model act spends money: three tasks, once per take. Worth saying out loud
+  to anyone asked to reproduce the recording.

@@ -1,7 +1,7 @@
 """Drive the real dashboard through a fixed demo, for recording.
 
-    .venv\\Scripts\\python.exe demo.py                 # the whole thing, ~2 minutes
-    .venv\\Scripts\\python.exe demo.py --no-claude      # same, minus the paid finale
+    .venv\\Scripts\\python.exe demo.py                 # the whole thing, ~2.5 minutes
+    .venv\\Scripts\\python.exe demo.py --no-claude      # same, minus the paid act
     .venv\\Scripts\\python.exe demo.py --pace 1.4       # hold every shot 40% longer
 
 This is `main.py` with a director attached: the same `App`, the same boxes, the
@@ -12,17 +12,24 @@ of it.
 
 Why a script rather than a live take: a person can only type into one box at a
 time, which forces a demo of a parallel fleet to be narrated serially. The
-director gives every box a task inside two seconds and then lets the grid diverge
-on camera. That shot is the product, and it cannot be performed by hand.
+director gives three boxes a task inside two seconds and then lets the grid
+diverge on camera. That shot is the product, and it cannot be performed by hand.
+
+**The pages are real websites, and that is the point.** These are ordinary
+Chromium windows on the ordinary internet: Wikipedia, Hacker News, the Python
+docs, MDN. Nothing here logs in, submits a form, or changes anything -- the demo
+reads pages and clicks links, which is all the agents can do. It needs a working
+network connection, and `main()` says so before it launches anything rather than
+recording five boxes failing to load.
 
 Three pieces of stagecraft, all of them cosmetic:
 
   * the mouse pointer is glided onto a control with `SetCursorPos` a beat before
     the control is invoked, so actions look caused rather than spontaneous;
   * text is typed into the chat box a character at a time;
-  * the pages are local `file://` fixtures written to the temp folder, so the
-    trajectory says the same thing on every take. Chrome blocks top-frame
-    navigation to `data:` URLs -- hence files.
+  * the take-control beat presses Ctrl+F in the summoned window and types into
+    Chromium's own find bar -- browser chrome that cannot be mistaken for a
+    picture of a browser.
 
 Recording notes:
 
@@ -34,19 +41,21 @@ Recording notes:
   * Beat timings are printed to the console as they happen, and again as a
     summary at the end, for lining up narration. See `transcript.md`.
 
-The paid beat is the last one, and it is one task on one box: the fleet runs on
-the free scripted agent, and that box's child is swapped for a Claude one through
-the ordinary constructor. `--no-claude` skips it, which is what rehearsals should
-use -- a demo script gets run a dozen times before the take that gets kept.
+The paid act is the last one, and it is **three tasks on three boxes**: the fleet
+runs on the free scripted agent, and those boxes' children are swapped for Claude
+ones through the ordinary constructor. `--no-claude` skips the swap and sends the
+same three prompts to the scripted agents instead, which still opens all three
+sites for real -- that is what rehearsals should use, because a demo script gets
+run a dozen times before the take that gets kept.
 """
 
 import ctypes
 import os
+import socket
 import sys
-import tempfile
 import time
 import traceback
-from pathlib import Path
+from urllib.parse import urlparse
 
 import session as session_model
 import thumbs
@@ -61,93 +70,92 @@ user32 = ctypes.windll.user32
 GLIDE_MS = 22          # one hop of the pointer on its way to a control
 GLIDE_HOPS = 14
 KEY_MS = 38            # per character in the chat box
-CLAUDE_CAP_S = 75      # give up waiting on the model rather than record a hang
+PAGE_KEY_S = 0.045     # per character into a real browser window
+CLAUDE_CAP_S = 120     # give up waiting on the models rather than record a hang
 
 VK_SHIFT = 0x10
+VK_CONTROL = 0x11
+VK_ESCAPE = 0x1B
+VK_F = 0x46
 KEYEVENTF_KEYUP = 0x0002
 
 
-# -- the fixtures ----------------------------------------------------------
+# -- the web ---------------------------------------------------------------
 
-# name -> (title, accent, the label of the link the script will click)
-SITES = {
-    "docs": ("Acme - Docs", "#1f6f4e", "Getting started"),
-    "changelog": ("Acme - Changelog", "#6b4f9c", "Release 4.2"),
-    "status": ("Acme - Status", "#2b6ca3", "Incident history"),
-    "blog": ("Acme - Blog", "#a35b2b", "How we park windows"),
-    "pricing": ("Acme - Pricing", "#8a2f52", "Team plan details"),
+# Real sites, picked for being stable, readable without an account, plain enough
+# to stay legible in a tile, and content nobody minds a browser reading a few
+# times per take. Nothing in this demo signs in, fills in a form, or writes
+# anything anywhere.
+#
+# They are in two groups, and the split is not cosmetic. `BrowserAgent` clicks
+# `a[href]` *first*, and on most modern sites the first anchor in the DOM is a
+# visually hidden "Skip to content" link -- Wikipedia, MDN and the Python docs
+# all have one. Playwright waits for a hidden element to become actionable,
+# times out, and the box ends `failed`. So the boxes driven by the script get
+# pages whose first link is really on the page, and the ones driven by the model
+# can have anything: it clicks by visible text and never touches a skip link.
+SCRIPTED_PAGES = {
+    "npr": "https://text.npr.org",          # first link goes to the full site
+    "cnn": "https://lite.cnn.com",          # first link is the CNN wordmark
+    "cern": "https://info.cern.ch/hypertext/WWW/TheProject.html",
+    "example": "https://example.com",       # first link goes to iana.org
+    "rfc": "https://www.rfc-editor.org/rfc/rfc1149.html",
 }
 
-OTHER_LINKS = ["Support", "Security", "Contact"]
+MODEL_PAGES = {
+    "hypervisor": "https://en.wikipedia.org/wiki/Hypervisor",
+    "hn": "https://news.ycombinator.com",
+    "pathlib": "https://docs.python.org/3/library/pathlib.html",
+}
 
-PLANS = """
-<table>
-  <tr><th>Plan</th><th>Price</th><th>SSO</th><th>Audit log</th></tr>
-  <tr><td>Starter</td><td>free</td><td>no</td><td>no</td></tr>
-  <tr><td>Team</td><td>$20 per user / month</td><td><b>yes</b></td><td>no</td></tr>
-  <tr><td>Business</td><td>$45 per user / month</td><td><b>yes</b></td><td>yes</td></tr>
-  <tr><td>Enterprise</td><td>talk to us</td><td><b>yes</b></td><td>yes</td></tr>
-</table>
-<p>SSO is included from the Team plan upwards. Starter has no SSO.</p>
-"""
+PAGES = {**SCRIPTED_PAGES, **MODEL_PAGES}
 
-STYLE = """
-body {{ margin:0; font:16px/1.6 system-ui,sans-serif; color:#1b1b1b; }}
-header {{ background:{accent}; color:#fff; padding:28px 40px; }}
-header h1 {{ margin:0; font-size:34px; }}
-main {{ padding:28px 40px; max-width:900px; }}
-nav a {{ display:inline-block; margin-right:22px; font-size:18px; color:{accent}; }}
-table {{ border-collapse:collapse; margin-top:18px; }}
-td,th {{ border:1px solid #ccc; padding:8px 16px; text-align:left; }}
-input {{ font-size:20px; padding:10px 14px; width:420px; margin-top:20px; }}
-"""
+# The opening fan-out: three real sites, three boxes, one script each. The
+# scripted agent can do this much -- find the URL, open it, look at it, click the
+# first link -- and doing it on the real internet is the point of the shot. NPR
+# is first because its first link leads to the full site, so that tile turns from
+# a page of text into an ordinary news homepage while you watch.
+OPENING = [
+    ("npr", "open {url} and tell me what is there"),
+    ("cnn", "take a look at {url}"),
+    ("cern", "check {url}"),
+]
+
+# A word that is certainly rendered on lite.cnn.com, because the scripted agent
+# clicked a link whose label was exactly this. The take-control beat types it
+# into Chromium's find bar, and a find that matches nothing would read as a
+# broken browser rather than a real one.
+FIND_TERM = "CNN"
+
+# The model act: three real sites again, but questions the fixed script cannot
+# answer. Each one needs the page read and a judgement about what it says, and
+# each answer is checkable by anyone watching the recording.
+MODEL_TASKS = [
+    ("hypervisor",
+     "go to {url} - what is the difference between a type 1 and a type 2 "
+     "hypervisor, in one sentence, and name an example of each from the page"),
+    ("hn",
+     "go to {url} - which story on the front page has the most points right "
+     "now, and how many comments does it have?"),
+    ("pathlib",
+     "go to {url} - which method writes text to a file, and what does it do if "
+     "the file is already there?"),
+]
 
 
-def _page(accent, heading, body):
-    return (
-        "<!doctype html><meta charset='utf-8'>"
-        + f"<title>{heading}</title>"
-        + f"<style>{STYLE.format(accent=accent)}</style>"
-        + f"<header><h1>{heading}</h1></header><main>{body}</main>"
-    )
+def reachable(url, timeout=4.0):
+    """Can this machine open a socket to that host at all?
 
-
-def fixtures():
-    """Write the demo's pages and return {name: file:// uri}.
-
-    Two pages per site: an index whose *first* link is the one the scripted agent
-    will click, and the page that link leads to. The second page carries an
-    autofocused text field, which is what the take-control beat types into -- a
-    summoned window arrives with the page's focus where it left it, so nothing
-    has to click into the page first.
+    A demo about web browsers with no network is not a demo with one broken beat,
+    it is a recording of five boxes failing. Worth four seconds up front.
     """
-    folder = Path(tempfile.gettempdir()) / "multibox-demo"
-    folder.mkdir(exist_ok=True)
-    uris = {}
-    for name, (title, accent, first) in SITES.items():
-        labels = [first] + OTHER_LINKS
-        links = "".join(
-            f"<a href='{name}-2.html'>{label}</a>" if i == 0
-            else f"<a href='{name}.html'>{label}</a>"
-            for i, label in enumerate(labels)
-        )
-        body = f"<nav>{links}</nav>"
-        subject = title.split("-")[-1].strip().lower()
-        body += PLANS if name == "pricing" else f"<p>Everything about {subject}.</p>"
-        (folder / f"{name}.html").write_text(
-            _page(accent, title, body), encoding="utf-8"
-        )
-        detail = ("<p>Team is $20 per user / month and includes SSO.</p>"
-                  if name == "pricing" else f"<p>{first}, in detail.</p>")
-        (folder / f"{name}-2.html").write_text(
-            _page(accent, first,
-                  detail
-                  + "<input autofocus placeholder='type here'>"
-                  + f"<p><a href='{name}.html'>back</a></p>"),
-            encoding="utf-8",
-        )
-        uris[name] = (folder / f"{name}.html").as_uri()
-    return uris
+    parts = urlparse(url)
+    port = 443 if parts.scheme == "https" else 80
+    try:
+        with socket.create_connection((parts.hostname, port), timeout):
+            return True
+    except OSError:
+        return False
 
 
 # -- finding things on screen ----------------------------------------------
@@ -181,13 +189,22 @@ def tile_centre(overview, index):
             overview.canvas.winfo_rooty() + (tile.thumb.top + tile.thumb.bottom) // 2)
 
 
-def type_into_page(text):
-    """Real keystrokes into whatever holds the foreground.
+# -- the real keyboard -----------------------------------------------------
+#
+# Only ever used with a box summoned and holding the foreground -- every caller
+# checks first -- because keystrokes go wherever the keyboard is, and being wrong
+# about that means typing into someone else's window.
 
-    Only ever called with a box summoned and holding it -- the caller checks --
-    because keystrokes go wherever the keyboard is, and being wrong about that
-    means typing into someone else's window.
-    """
+def tap(vk, ctrl=False):
+    if ctrl:
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+    user32.keybd_event(vk, 0, 0, 0)
+    user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+    if ctrl:
+        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
+
+def type_into_page(text):
     for char in text:
         code = user32.VkKeyScanW(ord(char))
         if code == -1:
@@ -199,7 +216,7 @@ def type_into_page(text):
         user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
         if shift:
             user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
-        time.sleep(0.045)
+        time.sleep(PAGE_KEY_S)
 
 
 # -- the director ----------------------------------------------------------
@@ -371,29 +388,27 @@ def swap_to_claude(app, box):
     app.agents[box.name] = Agent(app.sessions[box.name], box.cdp, "claude")
 
 
-def build_script(pages, claude=True):
+def build_script(claude=True):
     def script(d):
         app = d.app
         box1, box2, box3, box4, box5 = app.manager.boxes[:5]
+        working = [box1, box2, box3]
         known = {box.name for box in app.manager.boxes}
 
         # -- 1. the fleet, doing nothing at all ---------------------------
         d.beat("overview - five live tiles, nothing needs you")
         yield 5.0
 
-        # -- 2. four boxes at once ----------------------------------------
+        # -- 2. three real websites, at once -------------------------------
         # box4 is deliberately left alone: the stop beat needs a box whose child
-        # has not started Playwright yet. See beat 6.
-        d.beat("four boxes get a task inside two seconds")
-        d.send(box1, f"open {pages['docs']} and tell me what is there")
-        yield 0.45
-        d.send(box2, f"take a look at {pages['changelog']}")
-        yield 0.45
-        d.send(box3, f"check {pages['status']}")
-        yield 0.45
+        # has not started Playwright yet. See beat 7.
+        d.beat("three boxes open three real websites at once")
+        for box, (key, prompt) in zip(working, OPENING):
+            d.send(box, prompt.format(url=PAGES[key]))
+            yield 0.5
         # No URL anywhere in this one, and box5 is still on about:blank -- so it
         # has nothing to work with and has to come back and ask.
-        d.send(box5, "compare the pricing tiers for me")
+        d.send(box5, "tell me what the first paragraph says")
 
         # -- 3. the grid diverges on its own -------------------------------
         # Long enough that every child has answered with `working` before the
@@ -401,8 +416,8 @@ def build_script(pages, claude=True):
         # the wrong reason and the beat ends before it starts.
         yield 0.8
         d.beat("states diverge: working to done, and one stops to ask")
-        yield d.settled([box1, box2, box3], timeout=40.0)
-        yield 4.0
+        yield d.settled(working, timeout=60.0)
+        yield 5.0
 
         # -- 4. the box that is waiting on you -----------------------------
         d.beat("jump straight to the box that needs you")
@@ -411,8 +426,8 @@ def build_script(pages, claude=True):
         app.overview.go_to_waiting()
         yield 2.0
         d.beat("answer its question; it carries on from there")
-        yield from d.say(pages["pricing"])
-        yield d.until(lambda: d.state(box5) == session_model.DONE, 40.0,
+        yield from d.say(PAGES["example"])
+        yield d.until(lambda: d.state(box5) == session_model.DONE, 60.0,
                       "box5 finishes")
         yield 4.0
 
@@ -423,14 +438,15 @@ def build_script(pages, claude=True):
         yield from d.point(tile_centre(app.overview, 0))
         yield 0.6
         app.enter_detail(box1)
-        yield 5.0
+        yield 5.5
 
         # -- 6. stop --------------------------------------------------------
         # box4, the one left out of beat 2, and left out for this. Its child has
         # never run a task, so its first one spends a second or two importing
         # Playwright and attaching over CDP -- and that is the window Stop lands
-        # in. On a warm child a local page is done in a few hundred milliseconds,
-        # which is not something a demo can reliably catch, or a viewer see.
+        # in. On a warm child the cancel would arrive after the run was over.
+        # The URL is one the script could finish, so a stop that misses records a
+        # tidy run rather than a failure.
         d.beat("stop a run mid-flight")
         app.show_overview()
         yield 1.2
@@ -438,7 +454,7 @@ def build_script(pages, claude=True):
         yield 0.5
         app.enter_detail(box4)
         yield 1.2
-        yield from d.say(f"open {pages['blog']} and read it")
+        yield from d.say(f"open {PAGES['rfc']} and read it")
         yield d.until(lambda: d.state(box4) == session_model.WORKING, 5.0,
                       "box4 starts")
         yield 1.0
@@ -448,22 +464,34 @@ def build_script(pages, claude=True):
         yield 4.0
 
         # -- 7. take control -------------------------------------------------
+        # box2, because its page is the one whose text is known: the script
+        # clicked a link there labelled FIND_TERM, so the find bar will match.
         d.beat("take control: the real window, on the desktop, with the keyboard")
         app.show_overview()
         yield 1.2
-        yield from d.point(tile_centre(app.overview, 0))
+        yield from d.point(tile_centre(app.overview, 1))
         yield 0.5
-        app.enter_detail(box1)
+        app.enter_detail(box2)
         yield 1.0
         yield from d.point(find_button(app.detail.frame, "Take control"))
         yield 0.5
         app.detail.take_control()
-        yield 1.6
-        if app.manager.holds_foreground(box1):
-            type_into_page("typed into the real window")
+        yield 1.8
+        # Chromium's own find bar: browser chrome, on a real page, answering a
+        # real keyboard. Nothing about it can be mistaken for a picture of a
+        # browser. The foreground is checked first -- keystrokes go wherever the
+        # keyboard is, and being wrong means typing into someone else's window.
+        if app.manager.holds_foreground(box2):
+            tap(VK_F, ctrl=True)
+            yield 0.8
+            type_into_page(FIND_TERM)
+            d.note(f'searched the summoned window for "{FIND_TERM}"')
+            yield 2.5
+            tap(VK_ESCAPE)
+            yield 0.8
         else:
-            d.note("box1 did not hold the foreground; skipped typing")
-        yield 2.2
+            d.note("box2 did not hold the foreground; skipped the keyboard")
+            yield 2.0
         d.beat("look back at the dashboard and it parks itself")
         app.root.focus_force()   # what clicking the dashboard does
         yield 3.0
@@ -478,8 +506,8 @@ def build_script(pages, claude=True):
         yield 1.8
         added = app.manager.boxes[-1]
         if added.name not in known:
-            d.send(added, f"open {pages['status']}")
-            yield d.settled([added], timeout=40.0)
+            d.send(added, f"open {PAGES['rfc']}")
+            yield d.settled([added], timeout=60.0)
             yield 3.0
             d.beat("close box: window, agent and conversation, gone")
             yield from d.point(tile_centre(app.overview,
@@ -494,34 +522,41 @@ def build_script(pages, claude=True):
         else:
             d.note("no box was added; skipped the close-box beat")
 
-        # -- 9. the paid finale ------------------------------------------------
+        # -- 9. three real sites, three hard questions -------------------------
         if claude:
-            d.beat("same seam, different driver: Claude takes box2")
-            yield from d.point(tile_centre(app.overview, 1))
-            yield 0.5
-            app.enter_detail(box2)
-            yield 1.2
-            swap_to_claude(app, box2)
-            d.note("box2's child is a Claude loop now - this task costs money")
-            yield 0.8
-            # Something the fixed script cannot do: the answer is in the page, and
-            # which plan qualifies is a judgement about what the page says.
-            yield from d.say(
-                f"go to {pages['pricing']} - which is the cheapest plan that "
-                "includes SSO, and what does it cost?"
-            )
-            yield 2.0
-            d.beat("the model picks its own tools, and reports what it cost")
-            yield d.until(
-                lambda: d.state(box2) in (session_model.DONE, session_model.FAILED,
-                                          session_model.NEEDS_INPUT),
-                CLAUDE_CAP_S, "box2's model turns")
-            d.note(f"box2 ended {d.state(box2)}")
-            yield 6.0
+            d.beat("same seam, different driver: Claude takes three boxes")
+            for box in working:
+                swap_to_claude(app, box)
+                d.note(f"{box.name}'s child is a Claude loop now")
+                yield 0.4
+            d.note("three model tasks - this is the part that costs money")
+        else:
+            d.beat("the same three questions, with the script still driving")
+        yield 1.0
+
+        d.beat("three boxes, three real sites, three questions at once")
+        for box, (key, prompt) in zip(working, MODEL_TASKS):
+            d.send(box, prompt.format(url=PAGES[key]))
+            yield 0.6
+        yield 8.0
+
+        # One of them up close while the other two carry on behind it.
+        d.beat("watch one of them think")
+        yield from d.point(tile_centre(app.overview, 1))
+        yield 0.5
+        app.enter_detail(box2)
+        yield 10.0
+
+        d.beat("the answers, and what they cost")
+        yield d.settled(working, timeout=CLAUDE_CAP_S)
+        for box in working:
+            d.note(f"{box.name} ended {d.state(box)}")
+        yield 7.0
+        app.show_overview()
+        yield 5.0
 
         # -- 10. out ------------------------------------------------------------
         d.beat("close the dashboard; every window goes with it")
-        app.show_overview()
         yield 2.5
 
     return script
@@ -531,13 +566,15 @@ def build_script(pages, claude=True):
 
 USAGE = """usage: demo.py [--no-claude] [--pace X] [--agent script|claude]
 
-Drives the real dashboard through a scripted demo, for recording.
+Drives the real dashboard through a scripted demo, for recording. Needs a
+network connection: the pages are real websites.
 
-  --no-claude   skip the last beat, the only one that spends money. Rehearse
-                with this.
+  --no-claude   skip the model swap, the only thing here that spends money. The
+                three real sites are still opened, by the script. Rehearse with
+                this.
   --pace X      multiply every hold by X (default 1.0). 1.3 is a calmer take.
-  --agent KIND  what the fleet's children run (default script). The Claude beat
-                swaps one box either way.
+  --agent KIND  what the fleet's children run (default script). The model act
+                swaps three boxes either way.
 """
 
 
@@ -559,23 +596,36 @@ def main():
     if claude:
         # Fail here, rather than two minutes in with the camera running.
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("demo.py: the Claude beat needs ANTHROPIC_API_KEY in this "
+            print("demo.py: the model act needs ANTHROPIC_API_KEY in this "
                   "terminal.\n         Set it, or run with --no-claude.")
             return 2
         try:
             import anthropic  # noqa: F401
         except ImportError:
-            print("demo.py: the Claude beat needs the anthropic package.\n"
+            print("demo.py: the model act needs the anthropic package.\n"
                   "         pip install anthropic, or run with --no-claude.")
             return 2
+        base = os.environ.get("ANTHROPIC_BASE_URL")
+        if base and "api.anthropic.com" not in base:
+            print(f"demo.py: warning - ANTHROPIC_BASE_URL is {base}, so the "
+                  "boxes will not\n         be talking to the Anthropic API.")
 
-    pages = fixtures()
+    print("demo: checking the sites are reachable...")
+    probes = [PAGES["npr"], PAGES["cnn"], PAGES["cern"]]
+    if claude:
+        probes += [PAGES["hypervisor"], PAGES["hn"], PAGES["pathlib"]]
+    unreachable = [url for url in probes if not reachable(url)]
+    if unreachable:
+        print("demo: warning - cannot reach " + ", ".join(unreachable)
+              + "\n      the pages are real websites; without a network this "
+                "records five failures.")
+
     thumbs.set_dpi_awareness()
     config = load_config()
     config["agent"] = kind
     manager = BoxManager(config)
     print(f"demo: launching {len(config['boxes'])} boxes, {kind} agent"
-          f"{'' if claude else ', no paid beat'}...")
+          f"{'' if claude else ', no paid act'}...")
     manager.start()
     if len(manager.boxes) < 5:
         print("demo: this is choreographed for the five boxes in config.json.")
@@ -583,7 +633,7 @@ def main():
     app = App(manager)
     print("demo: recording can start now.\n")
     try:
-        Director(app, pace).run(build_script(pages, claude))
+        Director(app, pace).run(build_script(claude))
         app.run()
     finally:
         print("demo: closing boxes...")
