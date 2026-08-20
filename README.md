@@ -1,4 +1,3 @@
-
 # Multiboxing for Agents
 
 Runs several real Chromium windows at once and shows them all as live tiles in a
