@@ -401,6 +401,10 @@ class _Recorder:
         return _reply([_text("done then.")], "end_turn")
 
 
+class _Rejected(Exception):
+    """Stands in for anthropic.AuthenticationError, so the fast checks need no SDK."""
+
+
 class _FakePage:
     def __init__(self):
         self.url = "about:blank"
@@ -524,12 +528,46 @@ def check_model_loop():
     _drive(agent, "go forever")
     check("a runaway loop is capped", agent.state == model.FAILED, agent.state)
 
-    agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
-    agent._page = _FakePage()
-    lines = _drive(agent, "do something")
+    # Both credential failures, faked at the seam rather than provoked for real.
+    # The real ones need a request, and the fast checks may not spend money just
+    # because the machine running them happens to have a key set -- which is
+    # what this check did before, silently, to anyone who had one.
+    def _failing(exc):
+        class Client:
+            class messages:
+                @staticmethod
+                def create(**_kwargs):
+                    raise exc
+        return Client()
+
+    def _drive_broken(client):
+        agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+        agent._client = client
+        agent._sdk = types.SimpleNamespace(AuthenticationError=_Rejected)
+        agent._page = _FakePage()
+        said = [line["text"] for line in _drive(agent, "do something")
+                if line.get("type") == "say"]
+        return agent, said
+
+    # The SDK raises TypeError, not an API error, when it found nothing to
+    # authenticate with -- there is no request to reject.
+    agent, said = _drive_broken(_failing(TypeError(
+        "Could not resolve authentication method. Expected one of api_key, "
+        "auth_token, or credentials to be set")))
     check("no credentials fails clearly, naming the fix",
-          agent.state == model.FAILED and any("ANTHROPIC_API_KEY" in line["text"]
-                                              for line in lines if line.get("type") == "say"))
+          agent.state == model.FAILED
+          and any("ANTHROPIC_API_KEY" in text for text in said), said)
+    check("and does not blame config.json, which cannot help",
+          not any("config.json" in text for text in said), said)
+
+    agent, said = _drive_broken(_failing(_Rejected("401 invalid x-api-key")))
+    check("a rejected key says so, rather than that there is none",
+          agent.state == model.FAILED
+          and any("rejected" in text for text in said), said)
+
+    agent, said = _drive_broken(_failing(TypeError("goto() takes 2 arguments")))
+    check("an unrelated TypeError is not dressed up as a missing key",
+          not any("ANTHROPIC_API_KEY" in text for text in said), said)
 
 
 def check_agent_flag():
