@@ -250,7 +250,13 @@ with a correctness constraint worth testing.
 - **The demo clicks for real, because the film is a recording of a cursor.**
   `clicks.py` moves the pointer and presses the button; Windows delivers it to
   the widget under it. An editor tracks that cursor, and a demo that calls
-  methods produces footage where things happen and nothing moves. The one
+  methods produces footage where things happen and nothing moves.
+- **And the pointer is still the rest of the time.** Not a style preference: a
+  cursor drifting between controls during a ten-second hold records as a dead
+  straight line at a constant speed, which no hand produces and which a
+  cursor-tracking editor renders faithfully. Every move belongs to a press --
+  travel, arrive, pause, click -- and nothing moves it otherwise. If a beat needs
+  the pointer somewhere, it needs a click there. The one
   exception is the fan-out -- six boxes given work in three seconds is the shot a
   person cannot perform, which is the entire argument for the app -- and it goes
   through `App.send`, the same call the chat box makes. Every click is guarded by

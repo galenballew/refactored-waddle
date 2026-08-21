@@ -20,8 +20,17 @@ control the reel presses is pressed: the pointer travels to it and the left
 button goes down and up, through `clicks.py`, and Windows delivers it to the
 dashboard's own widget. Editors track that cursor, and a demo that changes the
 app by calling its methods produces footage where things happen and nothing
-moves. Between beats the pointer drifts across the grid rather than parking, so
-there is always something to follow.
+moves.
+
+**Between clicks the pointer does not move at all**, and that is deliberate. An
+earlier version drifted it across the grid during idle stretches, on the theory
+that a tracker needs something to follow. Recorded, that reads as a cursor
+sliding across the screen in a dead straight line for ten seconds at a constant
+speed, which is not a thing a hand does and is worse than stillness. So the
+pointer sits where it last clicked, and every move it makes is one gesture
+attached to one press: about half a second of travel, half a second of arrival,
+then the button. Clicks that come in a run keep their run; anything further apart
+is left alone in between.
 
 The one thing that is not a click is **the fan-out**, and it cannot be. Six boxes
 get a task inside three seconds; a person can only type into one box at a time,
@@ -77,9 +86,14 @@ from ui.app import App
 
 # -- stagecraft ------------------------------------------------------------
 
-GLIDE_MS = 20          # one hop of the pointer on its way to a control
-GLIDE_HOPS = 14
-DRIFT_MS = 34          # one hop of an idle pointer wandering the grid
+# How the pointer approaches a control. Between beats it does not move at all --
+# see the note on stillness in the module docstring -- so every move on camera is
+# one gesture: about half a second of travel, then it sits for `SETTLE_S` before
+# the button goes down. Roughly a second from "the mouse started moving" to "the
+# thing was pressed", which is what a hand does.
+GLIDE_MS = 26          # one hop of the pointer on its way to a control
+GLIDE_HOPS = 18
+SETTLE_S = 0.5         # arrived, not yet pressed
 KEY_MS = 40            # per character in the chat box
 CLAUDE_CAP_S = 120     # give up waiting on the models rather than record a hang
 
@@ -260,51 +274,26 @@ class Director:
 
     def click(self, target, label=""):
         """Travel there and press it, for real."""
-        yield from self.point(target)
-        yield 0.18
         if target is None:
             self.note(f"no control to click: {label or 'unnamed'}")
             return
+        yield from self.point(target)
+        yield SETTLE_S
         if not self.ready_to_click(label):
             return
-        yield 0.12
         clicks.press()
         yield 0.25
 
     def double_click(self, target, label=""):
-        yield from self.point(target)
-        yield 0.18
         if target is None:
             self.note(f"no tile to open: {label or 'unnamed'}")
             return
+        yield from self.point(target)
+        yield SETTLE_S
         if not self.ready_to_click(label):
             return
-        yield 0.12
         clicks.double_press()
         yield 0.3
-
-    def drift(self, targets, seconds):
-        """Wander the pointer across the grid while the fleet works.
-
-        Scaled by `pace` like every other hold: this one is bounded by the clock
-        rather than by a yielded number, so it would otherwise be the one part of
-        a slower take that did not slow down.
-
-        The alternative is a cursor parked in a corner for forty seconds, which
-        is dead footage for anything tracking it -- and drifting over tiles lifts
-        their frames on the way past, which is the app's own hover state doing
-        the work.
-        """
-        deadline = time.monotonic() + seconds * self.pace
-        index = 0
-        while time.monotonic() < deadline and targets:
-            target = targets[index % len(targets)]
-            index += 1
-            for _ in clicks.glide(target, hops=26, ease=2):
-                if time.monotonic() >= deadline:
-                    return
-                yield DRIFT_MS / 1000.0
-            yield 0.4
 
     def type(self, text):
         """Into the chat box, one character a beat, on the real keyboard.
@@ -447,7 +436,7 @@ def build_script(base, claude=True):
         # -- 1. what it is -------------------------------------------------
         d.beat("five live windows, one dashboard")
         yield 3.0
-        yield from d.drift([d.tile("Finch"), d.tile("Heron")], 6.0)
+        yield 6.0
 
         # -- 2. the fleet is not a fixed size ------------------------------
         d.beat("one more, on camera")
@@ -471,7 +460,7 @@ def build_script(base, claude=True):
         yield 1.5
         # The pointer keeps moving while nobody is driving. Forty seconds of a
         # parked cursor is dead footage for anything tracking it.
-        yield from d.drift([d.tile(n) for n in ("Swift", "Robin", "Wren", "Heron")], 12.0)
+        yield 12.0
         yield d.settled(working, timeout=75.0)
         d.note("counts: " + ", ".join(f"{n} {s}" for s, n
                                       in app.state_counts().items() if n))
@@ -479,7 +468,7 @@ def build_script(base, claude=True):
             d.note(f"a box took the foreground while working "
                    f"({app.foreground_name()})")
             app.take_foreground()
-        yield from d.drift([d.tile("Kestrel"), d.tile("Robin")], 5.0)
+        yield 5.0
 
         # -- 4. one of them wants you --------------------------------------
         d.beat("the one that needs you, and answering it")
@@ -543,7 +532,7 @@ def build_script(base, claude=True):
             d.send(name, prompt.format(url=url[key]))
             yield 0.5
         yield 3.0
-        yield from d.drift([d.tile("Finch"), d.tile("Swift")], 5.0)
+        yield 5.0
         # One of them up close while the other two work behind it.
         yield from d.open_box("Wren")
         yield 9.0
