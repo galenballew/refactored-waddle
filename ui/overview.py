@@ -412,7 +412,11 @@ class OverviewView:
         """The last cell: a way to get one more box.
 
         Dashed, and captionless, so it never reads as a window that failed to
-        appear.
+        appear -- but the same rectangle a card occupies, not just the thumbnail
+        part of it. Drawn on the thumb it came out shorter than everything
+        beside it, and a row whose last cell stops early reads as a layout fault
+        rather than as a different kind of tile. Dashes say it is not a box;
+        height does not need to say it twice.
         """
         hovered = self._hovered == tile.index
         if self._launching:
@@ -426,10 +430,12 @@ class OverviewView:
         pen.setDashPattern([4, 4])
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(self._rectf(tile.thumb), theme.RADIUS, theme.RADIUS)
+        rect = self._rectf(tile.cell).adjusted(
+            -theme.CARD_INSET, -theme.CARD_INSET, theme.CARD_INSET, theme.CARD_INSET)
+        painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
         painter.setFont(self.body)
         painter.setPen(theme.qcolour(colour))
-        painter.drawText(self._rectf(tile.thumb), Qt.AlignCenter, text)
+        painter.drawText(rect, Qt.AlignCenter, text)
 
     def _paint_too_small(self, painter, count):
         """`tile_rects` gives up rather than drawing tiles too small to see. Say
