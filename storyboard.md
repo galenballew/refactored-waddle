@@ -9,9 +9,11 @@ the film was hard to change afterwards: every timing decision had to be
 re-derived from the code that implemented it. This file is that missing
 document, rewritten for the longer version.
 
-Target: **about four minutes**, one film, one take. The last act is variable --
-five model loops decide how many turns they need -- so 4:00 is the floor and
-4:30 is a normal take.
+Target: **about four and a half minutes**, one film, one take. The last act is
+variable -- five model loops decide how many turns they need -- so 4:30 is the
+floor and 5:15 is a slow take. The first draft of this storyboard said four
+minutes; the narration is what pushed it, and the holds were fitted to the lines
+rather than the other way round.
 
 ---
 
@@ -23,7 +25,7 @@ Six asks, and the decision each one turned into.
 |---|---|
 | A broader variety of viewport counts | The fleet is **3 at the start, 8 at its peak, 5 at the end**. The grid reflows on camera twice, in both directions. |
 | Highlight the needs-your-attention button more | **A product change, not staging.** The jump button fills amber -- the `needs input` colour, the same one on the tiles it is counting -- and swells twice when it arms. The demo then arms it with two boxes at once and answers them one after the other. |
-| A good-looking homepage for new boxes | A bundled **Aviary start page**, shipped as `start_url` in `config.json`, so it is the product's default and not demo dressing. Each box's copy carries its own bird's name, so eight tiles of the same page are eight different pictures. |
+| A good-looking homepage for new boxes | A bundled **start page**, shipped as `start_url` in `config.json`, so it is the product's default and not demo dressing. Six bookmarks and nothing else -- the first draft put the box's bird name across it in large type and described the dashboard, which read as recursive, and was. `start_url` also takes a list now, one page per box. |
 | A balance of invented and real websites | An invented internal ops suite -- **Pinion Ops** -- served over local HTTP, alongside NPR, CNN, CERN, the RFC editor, Wikipedia, Hacker News and the Python docs. Roughly half and half in every act that has more than one box working. |
 | Many tasks at once, tiles toggling between states | A fourth agent kind, `--agent demo`, in `agent_host.py`. It really drives its browser over CDP -- real navigations, real screenshots, real clicks -- but along a deterministic score, so eight boxes churn through all five states on cue instead of whenever the network feels like it. |
 | Actual Claude output in the chat | The final act is **five boxes on Claude at once**, two of them reading Pinion Ops and three reading the real internet. |
@@ -50,9 +52,9 @@ same five questions to the demo agent and gets as far as a script can get.
 
 | Beat | Boxes | Why that number |
 |---|---|---|
-| 0:00-1:06 | **3** -- Wren, Finch, Swift | Big tiles. You can read a page in one, which is what makes "this is a live window, not a screenshot" land. |
-| 1:06-2:59 | **8** -- plus Heron, Robin, Kestrel, Plover, Egret | Small enough to read as a fleet, large enough that each tile still shows what page it is on. Nine cells with the add tile; at 1600x1000 that is a 3x3 grid of roughly 450x240 tiles, comfortably above `layout.MIN_TILE`. |
-| 2:59-end | **5** | Back to the shipped default, and the size the Claude act is legible at. |
+| 0:00-1:16 | **3** -- Wren, Finch, Swift | Big tiles. You can read a page in one, which is what makes "this is a live window, not a screenshot" land. |
+| 1:16-3:03 | **8** -- plus Heron, Robin, Kestrel, Plover, Egret | Small enough to read as a fleet, large enough that each tile still shows what page it is on. Nine cells with the add tile; at 1600x1000 that is a 3x3 grid of roughly 450x240 tiles, comfortably above `layout.MIN_TILE`. |
+| 3:03-end | **5** | Back to the shipped default, and the size the Claude act is legible at. |
 
 `config.json` stays at five boxes -- `verify.py` is choreographed against it.
 `demo.py` trims its own copy of the config to three at launch and grows from
@@ -86,10 +88,18 @@ reads as a website.
 published at CERN, the RFC editor, Wikipedia, Hacker News, the Python docs.
 Nothing signs in, submits a form, or changes anything anywhere.
 
-**The start page.** `sites/start.html`, the app's own, in the app's palette: the
-box's bird name in large type, and a short index of the sites above. It is
-`start_url` in `config.json`, so it is what a box opened by "+ Add box" lands on
--- and the grow act adds five boxes on camera, so it is seen five times.
+**The start page.** `sites/start.html`, in the app's palette: six bookmarks and
+nothing else. It says nothing about Aviary, nothing about boxes, and nothing
+about the window it is in -- the first version put the box's own bird name across
+it in large type and explained that it was a browser being mirrored in a
+dashboard, which is a page inside a window describing the application drawing the
+window. The tile caption already says which bird it is.
+
+It is also load-bearing, and not only as furniture: **a box only asks for a URL
+while it is still on its start page.** Given a task with no URL, an agent works
+with whatever page the box is on, and only comes back to ask when there is none.
+So `needs input` is a state each box can produce exactly once, and the three
+beats that want it on camera each have to spend a box that has never navigated.
 
 ### The drivers
 
@@ -107,17 +117,33 @@ prints when it finishes.
 
 | # | Beat | At | Length | Fleet |
 |---|---|---|---|---|
-| 0 | Cold open -- three windows leave the desktop | 0:00 | 12s | 3 |
-| 1 | Three live tiles, nothing needs you | 0:12 | 10s | 3 |
-| 2 | Two boxes open the ops suite; one has nothing to go on | 0:22 | 24s | 3 |
-| 3 | Two boxes need you, and the button says so | 0:46 | 20s | 3 |
-| 4 | + Add box, five times, live | 1:06 | 26s | 3 to 8 |
-| 5 | Eight boxes, mixed work, every state on screen | 1:32 | 45s | 8 |
-| 6 | Detail view, and Stop mid-flight | 2:17 | 22s | 8 |
-| 7 | Take control: the real window and the real keyboard | 2:39 | 20s | 8 |
-| 8 | Close three; the grid comes back down | 2:59 | 12s | 8 to 5 |
-| 9 | Five boxes on Claude, five real questions | 3:11 | 40-70s | 5 |
-| 10 | Close the dashboard; everything goes with it | ~4:00 | 5s | 5 |
+| 1 | overview - three live tiles, each on its own start page | 0:00 | 10s | 3 |
+| 2 | one box gets a page; two get tasks with no page in them | 0:10 | 26s | 3 |
+| 3 | two boxes need you, and the button says so | 0:36 | 20s | 3 |
+| 4 | answer one, and the button is still lit for the other | 0:55 | 21s | 3 |
+| 5 | + Add box, five times, live | 1:16 | 30s | 3 to 8 |
+| 6 | four boxes go to work at once | 1:46 | 12s | 8 |
+| 7 | a second wave, while the first is still going | 1:58 | 25s | 8 |
+| 8 | detail view: live mirror, trajectory, chat | 2:23 | 13s | 8 |
+| 9 | stop a run mid-flight | 2:36 | 13s | 8 |
+| 10 | take control: the real window, on the desktop, with the keyboard | 2:49 | 10s | 8 |
+| 11 | look back at the dashboard and it parks itself | 2:59 | 5s | 8 |
+| 12 | close three; the grid comes back down | 3:04 | 16s | 8 to 5 |
+| 13 | same seam, different driver: Claude takes five boxes | 3:20 | 10s | 5 |
+| 14 | five boxes, five questions, at once | 3:30 | 16s | 5 |
+| 15 | watch one of them think | 3:46 | 13s | 5 |
+| 16 | the answers, and what they cost | 3:59 | 25-70s | 5 |
+| 17 | close the dashboard; every window goes with it | 4:24 | 8s | 5 |
+
+These are the beat names `demo.py` prints, and the times assume every wait
+resolves at its measured length: a cold demo-agent task is about 13 seconds, a
+real Chromium launch about 3, a resumed task about 11. The total is **4:32 plus
+whatever the five model loops take**, so a take runs about 4:30 to 5:15.
+
+Every beat's hold is at least as long as its narration needs at 150 words a
+minute. That is arithmetic rather than taste, and it is why several holds are
+longer than the first draft of this storyboard guessed: the lines came first,
+the holds were fitted to them.
 
 ---
 
@@ -132,42 +158,47 @@ dashboard; the taskbar is empty.
 Unchanged from the original except the count. Three windows leaving is easier to
 follow than five.
 
-### 1 - Three live tiles, nothing needs you - 0:12 - 10s
+### 1 - Three live tiles, nothing needs you - 0:00 - 10s
 
-Three large tiles, each on its own start page with its own bird's name. The
-header greets the user, every count is hidden, the jump button is grey and reads
-**Nothing needs you**.
+Three large tiles, all on the same quiet start page. The header greets whoever is
+logged in, every count is hidden, and the jump button is grey and reads **Nothing
+needs you**.
 
-This is where the start page earns itself: at three-up the tiles are large enough
-to read, and what they show is a designed page rather than `about:blank`. Hold on
-the grid, then hover one tile so the frame and caption lift.
+At three-up the tiles are large enough to read a page in, which is what makes
+"this is a live window, not a screenshot" land. Hold on the grid, then hover one
+tile so the frame and caption lift.
 
-### 2 - Two boxes open the ops suite; one has nothing to go on - 0:22 - 24s
+### 2 - One box works; two come back and ask - 0:10 - 24s
 
-Wren gets the status board, Finch gets the ticket queue, both within a second.
-Swift is given `read the second paragraph and summarise it` -- no page open, no
-URL in the task -- and stops to ask.
+Wren gets the status board. Finch and Swift get tasks that name no page at all --
+what the on-call rota says this week, and read the second paragraph of nothing in
+particular -- and neither box has been anywhere, so both stop and ask.
 
-On screen: two tiles go blue and start moving, captions filling with real URLs.
-Swift goes amber almost immediately. Wren lands `done`, and its follow-up --
-`compare it with last quarter's`, with no target named -- puts it on `needs input`
-too.
+On screen: one tile goes blue and starts moving, captions filling with a real
+URL. Two go amber almost immediately, and the button in the corner lights.
 
-Two waiters is the setup for the next beat, and both of them are honest: neither
-task names the thing it is about.
+Two askers at once, here and nowhere else, because this is the only moment in the
+film when two boxes are still fresh. It is also why Finch does not simply open
+the ticket queue: the queue arrives in the next beat, as the answer to its
+question, which is a better way to show the page than opening it.
 
-### 3 - Two boxes need you, and the button says so - 0:46 - 20s
+### 3 - Two boxes need you, and the button says so - 0:34 - 41s
 
-The button is now amber-filled and reads **Go to Swift (+1 more)**, having
-swelled twice as it armed. The pointer glides onto it; the detail view opens on
-Swift with its question already in the chat. A URL is typed in and sent; Swift
-carries on and finishes.
+The button is amber-filled and reads **Go to Finch (+1 more)**, having swelled
+twice as it armed. Finch first because the button lists waiting boxes in fleet
+order -- ordering them any other way would be ranking them, and nothing here
+ranks anything.
 
-Back to the overview -- and the button is still armed, now reading **Go to Wren**.
-Press it again. That second press is the whole point of the beat: the button is a
-queue of what is waiting, not a notification you dismiss.
+The pointer glides onto it; the detail view opens on Finch with its question
+already in the chat; the ticket queue's URL is typed in and sent; Finch carries
+on and finishes.
 
-### 4 - + Add box, five times, live - 1:06 - 26s
+Back to the overview -- and the button is still armed, now reading **Go to
+Swift**. Press it again and answer that one with the inventory table. That second
+press is the whole point of the beat: the button is a queue of what is waiting,
+not a notification you dismiss.
+
+### 4 - + Add box, five times, live - 1:15 - 30s
 
 The pointer glides to the add tile and presses it five times, roughly four seconds
 apart. Each press: the tile shows `launching...`, the dashboard stops answering
@@ -184,12 +215,14 @@ for a second or two anyway.
 
 The centrepiece. Two waves.
 
-**Wave one, at 1:32** -- five boxes get tasks in three seconds: the changelog, the
-inventory table, NPR, CNN, and CERN's first website. Five tiles turn blue at once.
+**Wave one** -- four boxes get tasks in three seconds: the deploy log, NPR, the
+incident runbook, and CNN. Four tiles turn blue at once.
 
-**Wave two, at 1:44** -- as the first ones land, three more go out: RFC 1149,
-`http://127.0.0.1:<port>/deploys/482` (which 404s, and that box really fails), and
-one with no URL at all (which really asks).
+**Wave two**, as the first ones land -- three more go out: CERN's first website,
+`http://127.0.0.1:<port>/pinion/deploys/482` (which 404s, and that box really
+fails), and one with no URL at all. That last one goes to Plover, a box added
+four minutes ago and never given anything, because a box that has already been
+somewhere cannot ask. Egret is the other one held back, for the stop beat.
 
 What the grid does over the next thirty seconds is the reason the demo agent
 exists: eight tiles crossing between idle, working, done, needs input and failed
@@ -203,8 +236,9 @@ identically.
 
 ### 6 - Detail view, and Stop mid-flight - 2:17 - 22s
 
-Into one of the boxes that finished: the live mirror large, the trajectory panel's
-list of what it actually did, its chat, its state chip.
+Into Robin, which clicked through from the NPR front page to a story: the live
+mirror large, the trajectory panel's list of what it actually did, its chat, its
+state chip.
 
 Then Egret -- the box added last and never given a task -- gets its first one. Its
 child spends a second or two importing Playwright and attaching over CDP, and that
@@ -216,7 +250,7 @@ arrives after the run is already over.
 
 ### 7 - Take control: the real window and the real keyboard - 2:39 - 20s
 
-Take control on the box showing the Pinion runbook. The real Chromium window
+Take control on Kestrel, which is showing the Pinion runbook. The real Chromium window
 arrives in the middle of the screen. Ctrl+F opens Chrome's own find bar,
 `Degraded` is typed into it, matches highlight down the page, Escape closes it. The
 tile behind is still updating.
@@ -280,7 +314,8 @@ Every window, every agent process, every conversation, every profile.
 | `transcript.md` | Rewritten. It is also **stale today**: it still narrates `box1` to `box6`, from before the boxes were birds. |
 | `README.md` | The `--agent demo` kind, the `sites/` pages, the `start_url` key. Required by the README rule. |
 | `smoke.py` | The start page resolves and carries its box name; `DemoAgent` reaches all five states against a stand-in; the jump button arms, swells once, and does not swell again while it stays armed. |
-| `verify.py` | Untouched. It is choreographed against the five boxes in `config.json`, which do not change. |
+| `verify.py` | Untouched. It is choreographed against the five boxes in `config.json`, which do not change -- but it has not been re-run since `start_url` changed, and it is the only thing that covers the launch path with real windows. |
+| `narrate.py` | New, and not in the original plan. `narration.txt` is generated from `transcript.md` rather than maintained, and smoke fails if it is stale -- the transcript had already drifted once, describing boxes renamed two changes earlier. |
 
 ## What could ruin a take
 

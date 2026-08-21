@@ -75,12 +75,11 @@ def load_config(path=CONFIG_PATH):
 
     # A relative `start_url` is a page this repo ships and becomes a file:// URL;
     # an absolute one belongs to somebody else and is launched exactly as
-    # written. The same distinction decides `bundled_start`, which is the only
-    # thing that lets a box's name be appended to the URL -- adding a query
-    # string to a stranger's page is not ours to do.
-    raw = str(config.get("start_url") or "")
-    config["bundled_start"] = bool(raw) and "://" not in raw and not raw.startswith("about:")
-    config["start_url"] = sites.resolve(raw)
+    # written. Either way the resolved form is a *list*: one entry means the
+    # whole fleet opens the same page, several mean one page per box, taken in
+    # turn. `start_urls` is what the launcher reads; `start_url` keeps the
+    # configured shape for anything that wants to know what was asked for.
+    config["start_urls"] = sites.resolve_all(config.get("start_url"))
     return config
 
 
@@ -201,9 +200,11 @@ class BoxManager:
 
     def _launch(self, name):
         width, height = self.config["window_size"]
-        start_url = self.config["start_url"]
-        if start_url and self.config.get("bundled_start"):
-            start_url = sites.for_box(start_url, name)
+        # By position, so a fleet configured with several start pages opens on
+        # different ones -- and so an added box gets the next page along rather
+        # than always the first.
+        start_url = sites.start_page_for(self.config.get("start_urls") or [],
+                                         len(self.boxes))
         position = (LAUNCH_OFFSCREEN, LAUNCH_OFFSCREEN) if self.hidden else (0, 0)
 
         # Each box listens for CDP on its own port, so its agent can attach as an

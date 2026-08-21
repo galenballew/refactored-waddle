@@ -50,6 +50,7 @@ import time
 from pathlib import Path
 
 import pipes
+import sites
 from session import DONE, FAILED, IDLE, NEEDS_INPUT, WORKING
 
 POLL_S = 0.01
@@ -210,7 +211,7 @@ class BrowserAgent(Agent):
         url = find_url(text)
         if url:
             self.queue.extend([lambda: self._goto(url)] + self._look())
-        elif page.url and not page.url.startswith("about:"):
+        elif not sites.nothing_to_work_with(page.url):
             self.step(f"Working with the page already open: {page.url}")
             self.queue.extend(self._look())
         else:
@@ -320,6 +321,111 @@ class BrowserAgent(Agent):
             except Exception:
                 pass
             self._playwright = None
+
+
+class DemoAgent(BrowserAgent):
+    """The same browser and the same honesty, paced for a camera.
+
+    `demo.py` needs a fleet that churns through all five states on cue while a
+    camera is running, and `BrowserAgent` cannot give it that: it moves as fast
+    as the network lets it, every box moves at the same speed, and eight boxes
+    starting together land together. What this adds is *pacing* and a longer
+    look -- never authority over the state machine. Every state it reports is
+    one it just earned:
+
+      * `working` when it is driving the browser, like any other agent;
+      * `needs input` when the task names no page and the box has none open,
+        which is `BrowserAgent`'s own rule, unchanged;
+      * `failed` when the page it was sent to answers 400 or worse. The demo
+        sends one box to a URL that really 404s, so the red tile in the churn
+        act is a real HTTP response and not a staged one. `BrowserAgent` does
+        not check the status, and neither does a browser -- a 404 is a page you
+        successfully loaded. An agent reading it and calling the task done is
+        the lie worth avoiding here.
+
+    Each box moves at its own speed, derived from its name so a take is
+    repeatable. Eight boxes stepping in lockstep read as one animation; eight
+    boxes on their own clocks read as eight machines.
+
+    The link it clicks is the first *visible* one outside the page's header,
+    nav and footer, which is a better eye than `BrowserAgent`'s "first
+    `a[href]`" in two ways that matter on camera. It never lands on a hidden
+    "skip to content" link, which is what makes Wikipedia and the Python docs
+    end `failed` under the scripted agent. And it never clicks a nav link, so
+    five boxes reading five pages of one site do not all end up on that site's
+    front page looking identical. Where a page has no body link at all -- a
+    table, an RFC -- it says so and stays put, which is also how those tiles
+    stay different from each other.
+
+    `BrowserAgent` keeps its dumber rule on purpose. It is the deliberately
+    stupid script, and the answer to "it should decide better" is `ModelAgent`.
+    """
+
+    # A step every 0.9-1.8 seconds, so a task takes 8-15 seconds end to end:
+    # long enough to watch a tile change, short enough that eight of them fit in
+    # one shot.
+    SLOWEST_EXTRA_S = 0.9
+    SPREAD = 6
+
+    # Header, nav and footer are the same on every page of a site; the link
+    # worth clicking is in the part of the page that differs.
+    BODY_LINK = "el => !el.closest('header, nav, [role=navigation], footer')"
+    CANDIDATES = 12   # far enough down to clear any site's chrome
+
+    def __init__(self, name, endpoint):
+        super().__init__(name, endpoint)
+        # Deterministic, not random: two takes of the same script have to be the
+        # same film, and `demo.py` has a beat sheet with times in it.
+        spread = sum(ord(ch) for ch in name) % self.SPREAD
+        self.pace = STEP_S + spread * (self.SLOWEST_EXTRA_S / self.SPREAD)
+
+    def _look(self):
+        """A fuller look than the script's, because the trajectory panel is on
+        screen for ten seconds and four lines do not fill it."""
+        return [self._shoot, self._describe, self._headline,
+                self._click_body_link, self._shoot, self._finish]
+
+    def _goto(self, url):
+        self.step(f"Going to {url}")
+        answer = self._page.goto(url, wait_until="domcontentloaded",
+                                 timeout=NAV_TIMEOUT_MS)
+        status = answer.status if answer is not None else 0
+        if status >= 400:
+            # Raised rather than reported: `Agent.tick` catches it and the state
+            # goes to `failed` the same way any other broken page would.
+            raise RuntimeError(
+                f"{url} answered {status} {answer.status_text}".strip())
+        self.step(f"Landed on {self._page.url}")
+        self.report_url()
+
+    def _headline(self):
+        """What the page says it is about. One line, and it is the line a person
+        watching the trajectory can check against the tile."""
+        headings = self._page.locator("h1, h2")
+        if not headings.count():
+            self.step("No heading on the page")
+            return
+        text = " ".join((headings.first.text_content() or "").split())
+        self.step(f'Heading: "{text[:70]}"' if text else "The heading is empty")
+
+    def _click_body_link(self):
+        links = self._page.locator("a[href]:visible")
+        for index in range(min(links.count(), self.CANDIDATES)):
+            link = links.nth(index)
+            if not link.evaluate(self.BODY_LINK):
+                continue
+            label = " ".join((link.text_content() or "").split())[:40]
+            before = self._page.url
+            link.click(timeout=CLICK_TIMEOUT_MS)
+            self._page.wait_for_load_state("domcontentloaded",
+                                           timeout=NAV_TIMEOUT_MS)
+            if self._page.url == before:
+                self.step(f'Clicked "{label}" — the page did not change')
+            else:
+                self.step(f'Clicked "{label}" → {self._page.url}')
+                self.report_url()
+            return
+        self.step("Nothing to click in the body of the page")
 
 
 MODEL = os.environ.get("AVIARY_MODEL", "claude-opus-5")
@@ -669,6 +775,8 @@ def build(argv):
         return StandInAgent(name)
     if kind == "claude":
         return ModelAgent(name, endpoint)
+    if kind == "demo":
+        return DemoAgent(name, endpoint)
     return BrowserAgent(name, endpoint)
 
 
