@@ -271,7 +271,8 @@ class App:
         the dashboard to be still rather than sleep a guessed number of
         milliseconds and hope.
         """
-        return not any(mover.moving for mover in self.motion.values())
+        return (not any(mover.moving for mover in self.motion.values())
+                and not self.overview.attention_moving())
 
     # -- thumbnails ---------------------------------------------------------
 

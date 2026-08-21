@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fleet inventory — Pinion Ops</title>
+<link rel="stylesheet" href="ops.css">
+</head>
+<body>
+
+<header class="band">
+  <div class="bar">
+    <div class="mark">Pinion<span>.</span></div>
+    <nav>
+      <a href="/pinion/">Status</a>
+      <a href="/pinion/tickets">Tickets</a>
+      <a href="/pinion/changelog">Changelog</a>
+      <a class="here" href="/pinion/inventory">Inventory</a>
+      <a href="/pinion/runbook">Runbook</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Fleet inventory</h1>
+  <p class="lede">Eight hosts across three regions. Two are out of the rotation.</p>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Host</th>
+          <th>Role</th>
+          <th>Region</th>
+          <th>Cores</th>
+          <th>Memory</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">hbr-app-01</td><td>Application</td><td>eu-west</td>
+          <td class="num">16</td><td class="num">64 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+        <tr>
+          <td class="name">hbr-app-02</td><td>Application</td><td>eu-west</td>
+          <td class="num">16</td><td class="num">64 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+        <tr>
+          <td class="name">hbr-app-03</td><td>Application</td><td>eu-west</td>
+          <td class="num">16</td><td class="num">64 GB</td>
+          <td><span class="pill warn">Draining</span></td>
+        </tr>
+        <tr>
+          <td class="name">mrd-db-01</td><td>Database</td><td>us-east</td>
+          <td class="num">32</td><td class="num">256 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+        <tr>
+          <td class="name">mrd-db-02</td><td>Database, replica</td><td>us-east</td>
+          <td class="num">32</td><td class="num">256 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+        <tr>
+          <td class="name">sbl-work-01</td><td>Worker</td><td>ap-south</td>
+          <td class="num">8</td><td class="num">32 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+        <tr>
+          <td class="name">sbl-work-02</td><td>Worker</td><td>ap-south</td>
+          <td class="num">8</td><td class="num">32 GB</td>
+          <td><span class="pill bad">Offline</span></td>
+        </tr>
+        <tr>
+          <td class="name">sbl-work-03</td><td>Worker</td><td>ap-south</td>
+          <td class="num">8</td><td class="num">32 GB</td>
+          <td><span class="pill ok">In rotation</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Pinion Ops · internal · this page is fictional and exists to be read by a browser in a demo.</footer>
+</main>
+
+</body>
+</html>

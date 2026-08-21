@@ -48,7 +48,12 @@ under each tile, and a coloured ring around a tile repeats its state so you can
 read the fleet at a glance. When the grid has room to spare, a second line under
 each tile shows the last thing that window actually did. Along the top is a count
 of how many windows are in each state, and a button that opens whichever one is
-waiting on you — tiles never reorder themselves, so the fleet always looks the
+waiting on you. That button is the one loud control in the app: while at least
+one window is waiting it fills in the same amber those windows' rings are wearing
+and swells twice to say it has just started counting, and when nothing is waiting
+it goes quiet and greys out. It swells on the way up only — a second window
+joining the queue is not news, and a control that pulses forever is a colour you
+learn to ignore. Tiles never reorder themselves, so the fleet always looks the
 same shape. Tiles show the page only: the browser's own tab strip and address bar
 are cropped out, so five tiles read as a dashboard rather than as five
 screenshots of a browser. The last cell of the grid is **+ Add box**, which starts
@@ -227,7 +232,7 @@ Edit `config.json`:
 ```json
 {
   "boxes": ["Wren", "Finch", "Swift", "Heron", "Robin"],
-  "start_url": "about:blank",
+  "start_url": "sites/start.html",
   "window_size": [1440, 900],
   "window_layout": "hidden",
   "max_boxes": 12,
@@ -245,7 +250,13 @@ Edit `config.json`:
   defaults come from an ordered list of birds in `boxes.AVIARY`, and "+ Add box"
   takes the first one not in use — so closing `Finch` and adding another gives
   you `Finch` back rather than shuffling every name along.
-- `start_url` — the page every window opens on.
+- `start_url` — the page every window opens on. A **path** is a page this repo
+  ships, resolved against the repo folder and opened as a `file://` URL — the
+  default, `sites/start.html`, is a start page that says which bird the window
+  is, so a grid of freshly opened windows is legible rather than a grid of blank
+  white rectangles. A **URL** (anything with `://`, or `about:blank`) is opened
+  exactly as written. Only a shipped page is told which window it belongs to;
+  a URL of your own never has anything appended to it.
 - `window_size` — `[width, height]` for each browser window, both while parked and
   when summoned onto the screen. This is also the largest anything will ever be
   drawn: neither a tile nor the detail view's live view is scaled past its
@@ -302,9 +313,11 @@ second:
 
 It builds the real dashboard against stand-in windows and spawns the real agent
 processes, then checks the views, the message protocol, the five states, that the
-chrome moves when something changes and stops moving when it stops, what happens
-when an agent process dies mid-task, and that closing the dashboard takes its
-agent processes with it. Run this one while you work.
+chrome moves when something changes and stops moving when it stops, that the
+header button arms, swells once and goes quiet again, what happens when an agent
+process dies mid-task, that closing the dashboard takes its agent processes with
+it, and that every page this repo ships resolves and serves — including the one
+that has to answer 404. Run this one while you work.
 
 The thorough one needs real windows:
 

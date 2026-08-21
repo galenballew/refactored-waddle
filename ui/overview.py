@@ -128,8 +128,19 @@ class OverviewView:
         header.addSpacing(14)
 
         self.jump = QPushButton("")
+        self.jump.setObjectName("jump")
         self.jump.clicked.connect(self.go_to_waiting)
         header.addWidget(self.jump)
+        # Armed means at least one box is waiting on the user. It is a Qt dynamic
+        # property rather than an object name so the stylesheet can carry both
+        # looks and nothing has to be restyled by hand.
+        self._armed = False
+        self._jump_tint = ""
+        # The same two-beat swell the tiles use, on the same clock, for the same
+        # reason: the button has just started counting something, and after two
+        # beats it should stop asking to be looked at. Colour only -- a button
+        # that changes size relays out the header around it.
+        self._jump_swell = motion.Value(0.0, self.app.request_draw)
         outer.addLayout(header)
 
         self.canvas = TileCanvas(self)
@@ -207,10 +218,56 @@ class OverviewView:
         if not waiting:
             self.jump.setText("Nothing needs you")
             self.jump.setEnabled(False)
-            return
-        extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
-        self.jump.setText(f"Go to {waiting[0].name}{extra}  →")
-        self.jump.setEnabled(True)
+        else:
+            extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
+            self.jump.setText(f"Go to {waiting[0].name}{extra}  →")
+            self.jump.setEnabled(True)
+        self._arm(bool(waiting))
+
+    def _arm(self, armed):
+        """Light the button, once, on the way up.
+
+        Only the rising edge swells. A second box arriving while the first is
+        still waiting is not news about the button -- it already says someone is
+        waiting, and re-swelling on every arrival is the perpetual pulse the
+        whole motion vocabulary exists to avoid.
+        """
+        if armed != self._armed:
+            self._armed = armed
+            self.jump.setProperty("armed", armed)
+            # Qt only re-reads a dynamic property in a selector when the widget
+            # is repolished; without this the button keeps its old look.
+            self.jump.style().unpolish(self.jump)
+            self.jump.style().polish(self.jump)
+            if armed:
+                self._jump_swell.swell()
+            else:
+                self._jump_swell.jump(0.0)
+        self._tint_jump()
+
+    def _tint_jump(self):
+        """Paint the swell, if it is running.
+
+        A widget stylesheet rather than a painter, because this is a real
+        QPushButton in a real layout. Set at most once per drawn frame -- and
+        `App.request_draw` is what guarantees there is only one of those per turn
+        of the event loop -- then cleared, so the stylesheet in `theme.py` is
+        what describes the button whenever nothing is moving.
+        """
+        lift = self._jump_swell.get() if self._armed else 0.0
+        if lift <= 0.001:
+            tint = ""
+        else:
+            colour = theme.mix(theme.state_colour(session.NEEDS_INPUT),
+                               theme.TEXT, motion.SWELL_LIFT * lift).name()
+            tint = f"background: {colour}; border-color: {colour};"
+        if tint != self._jump_tint:
+            self._jump_tint = tint
+            self.jump.setStyleSheet(tint)
+
+    def attention_moving(self):
+        """Is the jump button still swelling? Asked by `App.motion_idle`."""
+        return self._jump_swell.moving
 
     def go_to_waiting(self):
         waiting = self.app.waiting()

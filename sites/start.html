@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aviary</title>
+<!--
+  What a box opens when it has nothing else to open.
+
+  `about:blank` is a white rectangle, and a grid of them says nothing about what
+  a box is. This says the one thing worth knowing at a glance -- which bird you
+  are looking at -- in type big enough to survive a tile rendering the window at
+  about a third of its size. The name arrives as `?box=Wren`, appended by
+  `boxes.py` and only ever to this page.
+
+  One file, no build, no assets, and no network: it is opened over `file://` in
+  an ordinary run and over local HTTP by the demo, and it has to look identical
+  either way. The palette is `ui/theme.py`'s, by hand, because a browser page
+  cannot import it.
+-->
+<style>
+  :root {
+    --bg: #0f0f12;
+    --panel: #17171c;
+    --field: #20202a;
+    --edge: #2a2a33;
+    --edge-bright: #3a3a46;
+    --text: #eceef2;
+    --muted: #8b8b98;
+    --dim: #5a5a66;
+    --accent: #6aa9e0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 18px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 28px;
+    color: var(--muted);
+    font-size: 17px;
+    letter-spacing: 0.4px;
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 28px 24px;
+  }
+
+  /* The one thing that has to be readable in a 450px tile. */
+  h1 {
+    margin: 0;
+    font-size: 118px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -3px;
+  }
+
+  .sub {
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 18px;
+    text-align: center;
+    max-width: 46ch;
+  }
+
+  .links {
+    display: flex;
+    gap: 14px;
+    margin-top: 34px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .links a {
+    display: block;
+    padding: 16px 22px;
+    background: var(--field);
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 18px;
+  }
+
+  .links a:hover { background: #2a2a36; border-color: var(--edge-bright); }
+  .links a span { display: block; color: var(--dim); font-size: 15px; margin-top: 3px; }
+
+  footer {
+    padding: 0 28px 22px;
+    color: var(--dim);
+    font-size: 15px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="0" y="0" width="16" height="16" rx="3" fill="#0f0f12"/>
+    <rect x="3" y="3" width="4.3" height="4.3" rx="1.6" fill="#3a3a46"/>
+    <rect x="8.7" y="3" width="4.3" height="4.3" rx="1.6" fill="#6aa9e0"/>
+    <rect x="3" y="8.7" width="4.3" height="4.3" rx="1.6" fill="#3a3a46"/>
+    <rect x="8.7" y="8.7" width="4.3" height="4.3" rx="1.6" fill="#3a3a46"/>
+  </svg>
+  Aviary
+</header>
+
+<main>
+  <h1 id="name">Aviary</h1>
+  <p class="sub" id="sub">A browser box. It sits off the desktop, and the dashboard shows a live view of it.</p>
+
+  <div class="links">
+    <a href="https://en.wikipedia.org">Wikipedia<span>en.wikipedia.org</span></a>
+    <a href="https://news.ycombinator.com">Hacker News<span>news.ycombinator.com</span></a>
+    <a href="https://docs.python.org/3/">Python docs<span>docs.python.org</span></a>
+    <a href="https://developer.mozilla.org">MDN<span>developer.mozilla.org</span></a>
+  </div>
+</main>
+
+<footer>Nothing is signed in here, and this profile is gone when the box closes.</footer>
+
+<script>
+  // The box's own name, if it was given one. `boxes.py` appends it, and only to
+  // this page -- a URL somebody else configured is launched exactly as written.
+  const box = new URLSearchParams(location.search).get("box");
+  if (box) {
+    document.getElementById("name").textContent = box;
+    document.title = box + " — Aviary";
+  } else {
+    document.getElementById("sub").textContent =
+      "A browser box. It sits off the desktop, and the dashboard shows a live view of it.";
+  }
+</script>
+
+</body>
+</html>

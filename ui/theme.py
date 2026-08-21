@@ -190,6 +190,22 @@ QPushButton#compact {{
     font-size: 9pt;
 }}
 
+/* The one control allowed to be loud, and only while it has something to say.
+   It counts the boxes that stopped to ask you something, so it wears their
+   colour rather than the accent -- the button and the frames it is pointing at
+   are then the same amber, and nothing has to explain the connection. Unarmed it
+   falls through to the disabled rule above and recedes completely. */
+QPushButton#jump[armed="true"] {{
+    background: {STATE[session.NEEDS_INPUT]};
+    color: #17120a;
+    border-color: {STATE[session.NEEDS_INPUT]};
+    font-weight: 600;
+}}
+QPushButton#jump[armed="true"]:hover {{
+    background: #f0c256;
+    border-color: #f0c256;
+}}
+
 QPushButton#primary {{
     background: {ACCENT};
     color: #0d1116;

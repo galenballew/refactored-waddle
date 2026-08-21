@@ -1,0 +1,205 @@
+/* Pinion Ops -- an invented company's internal tools.
+ *
+ * Sized for the viewport a box actually has, which is not the one you would
+ * guess. A box's window is 1440x900 DIPs, its page region measures 1440x770
+ * *physical* pixels, and this machine runs at 150% -- so the CSS viewport these
+ * pages get is about **960x513**. Everything here is scaled to put a whole table
+ * inside that without scrolling, because a tile that shows the top third of a
+ * page and a scrollbar reads as a broken window.
+ *
+ * The second constraint is the tile. An overview tile renders that window at
+ * roughly a third, so a 15px rule here survives as about seven pixels and body
+ * text stops being text. What has to carry the page at that size is the dark
+ * header band, the heading, the status colours and the rhythm of the rows --
+ * which is why the type is large *relative to the page*, the rows are tall, and
+ * the pills are blocky.
+ *
+ * Light on purpose. The dashboard's chrome is dark, and a dark page inside a
+ * dark frame reads as one texture; a light page reads as a website.
+ */
+
+:root {
+  --ink: #10151c;
+  --muted: #5b6675;
+  --line: #dde3ec;
+  --surface: #ffffff;
+  --page: #eef1f5;
+  --band: #1b2430;
+  --brand: #0d7c8a;
+
+  --ok-ink: #17693f;
+  --ok-bg: #ddf3e6;
+  --warn-ink: #96590a;
+  --warn-bg: #fbeed2;
+  --bad-ink: #a92f28;
+  --bad-bg: #fbe1de;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.42 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* The dark band is the page's silhouette in a tile. */
+header.band {
+  background: var(--band);
+  color: #ffffff;
+  padding: 11px 0;
+}
+
+.bar {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.mark {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+.mark span { color: #6fd3de; }
+
+/* The first anchor on every page is a real, visible link in this nav, and that
+ * is load-bearing: an agent that clicks the first `a[href]` on a page finds a
+ * navigation link here, not a hidden "skip to content" link that Playwright
+ * will wait on until it times out. */
+nav { display: flex; gap: 18px; }
+
+nav a {
+  color: #c6d0dc;
+  text-decoration: none;
+  font-size: 14px;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+nav a:hover { color: #ffffff; }
+nav a.here { color: #ffffff; border-bottom-color: var(--brand); }
+
+main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 11px 22px 12px;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.1;
+  margin: 0 0 3px;
+  letter-spacing: -0.7px;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 9px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 13px;
+  border-bottom: 1px solid var(--line);
+  background: #f7f9fc;
+  white-space: nowrap;
+}
+
+td {
+  padding: 6px 13px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+tr:last-child td { border-bottom: none; }
+
+td.name { font-weight: 600; white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.quiet { color: var(--muted); }
+td.title { color: var(--ink); }
+
+.pill {
+  display: inline-block;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.pill.bad { background: var(--bad-bg); color: var(--bad-ink); }
+
+.tag {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: #eaeef4;
+  color: var(--muted);
+}
+
+.tag.p1 { background: var(--bad-bg); color: var(--bad-ink); }
+.tag.p2 { background: var(--warn-bg); color: var(--warn-ink); }
+
+.none { color: var(--bad-ink); font-weight: 600; }
+
+.banner {
+  background: var(--warn-bg);
+  border: 1px solid #e8cf9a;
+  border-radius: 8px;
+  padding: 8px 13px;
+  margin-bottom: 9px;
+  font-size: 14px;
+}
+
+.banner strong { color: var(--warn-ink); }
+
+h2 {
+  font-size: 19px;
+  margin: 14px 0 5px;
+}
+
+p { margin: 0 0 8px; max-width: 68ch; }
+
+ol, ul { max-width: 68ch; padding-left: 22px; margin: 0 0 10px; }
+li { margin-bottom: 4px; }
+
+code {
+  font: 14px "Consolas", ui-monospace, monospace;
+  background: #e9eef4;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+footer {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 8px 0 0;
+}
