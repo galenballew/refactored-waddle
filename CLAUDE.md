@@ -27,6 +27,16 @@ distinction is load-bearing: a hidden, minimized or cloaked window is not
 composited, and its tile goes blank. This is about desktop citizenship, not
 isolation — see the ephemeral-profiles note below.
 
+**Capitalisation is a rule, not a mood.** The five state words -- `idle`,
+`working`, `needs input`, `done`, `failed` -- are always lowercase: they are
+values in a vocabulary and they appear inline, in `1 needs input` and next to a
+dot in a caption, where a capital would be wrong. Everything else a person reads
+starts with one: buttons, notes, placeholders, hints, prose. `TRAJECTORY` is the
+single exception, and it is a typographic one -- it is letter-spaced small caps
+because it is a section label, not a sentence. Box names keep their own casing
+wherever they appear, including at the start of a sentence, because they are
+identifiers.
+
 The app is called **Aviary**, and the name lives in one place: `theme.NAME`. The
 window title, the wordmark, the taskbar identity and the icon all read it from
 there. Boxes are named after birds from `boxes.AVIARY` rather than numbered.

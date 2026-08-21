@@ -105,9 +105,9 @@ class OverviewView:
         outer.setSpacing(4)
 
         header = QHBoxLayout()
-        self.title = QLabel(theme.NAME.lower())
+        self.title = QLabel(theme.NAME)
         self.title.setObjectName("head")
-        self.hint = QLabel("double-click a box to open it")
+        self.hint = QLabel("Double-click a box to open it")
         self.hint.setObjectName("muted")
         header.addWidget(self.title)
         header.addSpacing(12)
@@ -223,12 +223,12 @@ class OverviewView:
                 label.hide()
         waiting = self.app.waiting()
         if not waiting:
-            self.jump.setText("nothing needs you")
+            self.jump.setText("Nothing needs you")
             self.jump.setEnabled(False)
             self._fit_header()
             return
         extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
-        self.jump.setText(f"go to {waiting[0].name}{extra}  →")
+        self.jump.setText(f"Go to {waiting[0].name}{extra}  →")
         self.jump.setEnabled(True)
         self._fit_header()
 
@@ -420,11 +420,11 @@ class OverviewView:
         """
         hovered = self._hovered == tile.index
         if self._launching:
-            text, colour = "launching…", theme.MUTED
+            text, colour = "Launching…", theme.MUTED
         elif self.app.can_add():
             text, colour = "+   Add box", theme.TEXT if hovered else theme.MUTED
         else:
-            text, colour = f"limit reached ({self.app.manager.max_boxes})", theme.DIM
+            text, colour = f"Limit reached ({self.app.manager.max_boxes})", theme.DIM
         pen = QPen(theme.qcolour(theme.EDGE_BRIGHT if hovered else theme.EDGE),
                    1, Qt.DashLine)
         pen.setDashPattern([4, 4])
@@ -455,7 +455,7 @@ class OverviewView:
         painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
         painter.setFont(self.font)
         painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
-        painter.drawText(rect, Qt.AlignCenter, "no window")
+        painter.drawText(rect, Qt.AlignCenter, "No window")
 
     @staticmethod
     def _rectf(rect):
