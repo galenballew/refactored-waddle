@@ -1,0 +1,33 @@
+Five Chromium windows just started. They are already off the desktop — no taskbar buttons, no Alt-Tab entries. This dashboard is the only window you will ever see.
+
+Each tile is a live view of one of those windows. Not a screenshot — the real window, updating while it sits parked off-screen.
+
+Three of them get a task at once. Real sites, on the real internet.
+
+Nobody is driving now. Three ordinary Chromium windows, three real websites, loading at once in windows that are nowhere on your screen. The counts move on their own and the tiles stay where they are — nothing here reorders, ranks or scores anything. Then one box stops. It was not given a URL and it is not going to guess, so it asks. That is needs input, and it is one of the two states worth looking for.
+
+The button in the corner goes to whoever is waiting. It points at the next one; it does not decide which one matters.
+
+Answer in its own chat, and it picks up where it stopped. Every box keeps its own conversation, and they are gone when the app closes.
+
+Double-click any tile to get that box on its own. The same live mirror, bigger. Its conversation along the bottom. And on the right, the trajectory: every page it opened, every screenshot it took, everything it clicked. Kept apart from the chat on purpose, so the chat stays short enough to read.
+
+While a box is working the input is disabled. The agent would drop what you typed, and a message that vanishes is worse than a box you cannot type into. Stop interrupts it between steps. The trajectory stays where it is — it is a record of what happened, not of what was going to.
+
+The mirror cannot be clicked into. When you need the page yourself, Take control brings the real window out and gives it the keyboard — and that is Chrome's own find bar answering it, on a real page. Only one window is ever out at a time.
+
+Look back at the dashboard and it goes straight back. Its tile never stopped updating.
+
+The fleet is not fixed at five. Add box starts another one: it launches, parks itself, and gets a tile, an agent process and a conversation like everything else. The dashboard stops answering while Chromium starts. The tiles do not — Windows composites those.
+
+Close box is the other direction, and it is final. Nothing is written back to the config file, so a restart is five boxes again.
+
+Everything so far ran on a script: find a URL, open it, look at it, click the first link. Nothing called a model. Now three of these boxes get a Claude loop instead — same interface, same seam, different thing behind it.
+
+Three questions, three real sites, at once. Which hypervisor is which, and name an example of each. What is top of Hacker News right now and how many comments it has. Which pathlib method writes a file, and what it does if the file is already there.
+
+It chooses what to do and in what order: open the page, read it, look at it, click something. None of these questions is answerable by opening a URL and clicking the first link, which is all the script could ever do.
+
+Three answers, from three pages that none of us read. The last line of each trajectory is what it cost — turns, tokens in, tokens out. Twelve turns and a box gives up and says so. A loop that will not converge is a bill.
+
+Close the dashboard and every window goes with it, along with every agent process, every conversation and every profile.
