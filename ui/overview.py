@@ -105,7 +105,7 @@ class OverviewView:
         outer.setSpacing(4)
 
         header = QHBoxLayout()
-        self.title = QLabel("multibox")
+        self.title = QLabel(theme.NAME.lower())
         self.title.setObjectName("head")
         self.hint = QLabel("double-click a box to open it")
         self.hint.setObjectName("muted")

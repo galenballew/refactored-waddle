@@ -213,6 +213,24 @@ def page_rect(hwnd):
             bounds.right - origin.x, bounds.bottom - origin.y)
 
 
+def set_app_id(app_id):
+    """Tell the shell this process is its own application.
+
+    Without it Windows groups the dashboard under `python.exe` and puts
+    Python's icon on the taskbar button, whatever the window's own icon says --
+    the window title bar obeys setWindowIcon, the taskbar does not. Must run
+    before the first window is shown.
+
+    Best-effort: it is cosmetic, and an old Windows without the API is not a
+    reason to refuse to start.
+    """
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        return True
+    except Exception:
+        return False
+
+
 def set_topmost(hwnd, on):
     """Float a window above the others, or stop.
 

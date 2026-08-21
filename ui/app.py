@@ -115,9 +115,15 @@ class App:
         # a pipe, is the point.
         self.agents = {box.name: self._spawn(box) for box in manager.boxes}
 
+        # Before the first window exists, or the taskbar button keeps Python's
+        # icon no matter what the window carries.
+        winfocus.set_app_id(f"galenballew.{theme.NAME}")
         self.qt = QApplication.instance() or QApplication([])
+        self.qt.setApplicationName(theme.NAME)
+        self.qt.setWindowIcon(theme.icon())
         self.window = Window(self)
-        self.window.setWindowTitle("multibox")
+        self.window.setWindowIcon(theme.icon())
+        self._update_title()
         self.fonts = theme.fonts()
         theme.apply(self.window)
 
@@ -523,7 +529,24 @@ class App:
             self.manager.park_summoned()
         self.manager.reassert_layout()
 
+    def _update_title(self):
+        """What the window says it is, in the one place the app is not.
+
+        The wordmark inside the window already gives the name, so repeating it
+        in the title bar spends the only channel left when the dashboard is
+        behind something or minimised. This is the whole point of the app --
+        quiet until a box needs you -- said where you can see it without
+        looking at the app at all.
+        """
+        waiting = len(self.waiting())
+        # "waiting" rather than "needs you" because the count makes the second
+        # one disagree with itself at one box, and a title bar is the last place
+        # to be fixing up plurals.
+        self.window.setWindowTitle(
+            f"{theme.NAME} — {waiting} waiting" if waiting else theme.NAME)
+
     def draw(self):
+        self._update_title()
         if self.view is not None:
             self.view.draw()
 

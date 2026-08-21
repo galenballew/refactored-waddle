@@ -1,4 +1,4 @@
-# Multiboxing for Agents
+# Aviary
 
 Runs several real Chromium windows at once and shows them all as live tiles in a
 single dashboard — the only window you ever see. The browser windows themselves
@@ -127,7 +127,7 @@ Given a task, an agent:
    `https://…` or a `file:///…` path;
 2. goes there, and says so;
 3. **takes a screenshot** of the page (written to your temp folder as
-   `multibox-<window>.png`);
+   `aviary-<window>.png`);
 4. reads the page's title and counts its links;
 5. clicks the first link and reports where that landed;
 6. finishes, with the title and the final address.
@@ -187,7 +187,7 @@ Two limits worth knowing:
   loop that will not converge is a bill, not a feature.
 - **Every task reports what it cost** as the last line of its trajectory — how
   many turns, and the input and output tokens. Model is Claude Opus 5 unless you
-  set `MULTIBOX_MODEL`.
+  set `AVIARY_MODEL`.
 
 Cancel still works, but only between turns: **Stop** cannot interrupt a model
 call that is already in flight, so it takes effect when the current turn returns.
@@ -226,7 +226,7 @@ Edit `config.json`:
 
 ```json
 {
-  "boxes": ["box1", "box2", "box3", "box4", "box5"],
+  "boxes": ["wren", "finch", "swift", "heron", "robin"],
   "start_url": "about:blank",
   "window_size": [1440, 900],
   "window_layout": "hidden",
@@ -241,7 +241,10 @@ Edit `config.json`:
 ```
 
 - `boxes` — the window names, in order. **The length of this list is the number of
-  windows.** Add or remove entries to get more or fewer.
+  windows.** Add or remove entries to get more or fewer. Any names will do; the
+  defaults come from an ordered list of birds in `boxes.AVIARY`, and "+ Add box"
+  takes the first one not in use — so closing `finch` and adding another gives
+  you `finch` back rather than shuffling every name along.
 - `start_url` — the page every window opens on.
 - `window_size` — `[width, height]` for each browser window, both while parked and
   when summoned onto the screen. This is also the largest anything will ever be

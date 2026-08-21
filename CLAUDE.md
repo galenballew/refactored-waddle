@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-A multibox window manager for browser sandboxes: run N headed Chromium windows at
+Aviary is a multibox window manager for browser sandboxes: run N headed Chromium windows at
 once, see them all as live tiles in one dashboard, and open any one of them to
 work on it. Python + Playwright (sync API) + PySide6 + ctypes. Windows only.
 
@@ -26,6 +26,10 @@ and one window showing a live view of each. Parked is not hidden, and that
 distinction is load-bearing: a hidden, minimized or cloaked window is not
 composited, and its tile goes blank. This is about desktop citizenship, not
 isolation — see the ephemeral-profiles note below.
+
+The app is called **Aviary**, and the name lives in one place: `theme.NAME`. The
+window title, the wordmark, the taskbar identity and the icon all read it from
+there. Boxes are named after birds from `boxes.AVIARY` rather than numbered.
 
 ## Commands
 
@@ -342,7 +346,7 @@ Learned the hard way; all of these will silently produce a blank or wrong tile.
 - Check [8] runs late on purpose: everything before it summons boxes, moves them
   around and resizes the window, so passing means the fleet went back into hiding
   by itself rather than merely starting out that way. Check [9] adds a sixth box,
-  so nothing after it may assume five. Check [10] navigates box1 away from the
+  so nothing after it may assume five. Check [10] navigates the first box away from the
   colour fixtures, so it has to come after the pixel checks. Check [11] runs last
   because it closes the dashboard to test what closing the dashboard does — it
   owns the shutdown, and `main()` must not quit the app a second time.

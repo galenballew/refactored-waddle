@@ -361,8 +361,8 @@ def swap_to_claude(app, box):
 def build_script(claude=True):
     def script(d):
         app = d.app
-        box1, box2, box3, box4, box5 = app.manager.boxes[:5]
-        working = [box1, box2, box3]
+        wren, finch, swift, heron, robin = app.manager.boxes[:5]
+        working = [wren, finch, swift]
         known = {box.name for box in app.manager.boxes}
 
         # -- 1. the fleet, doing nothing at all ---------------------------
@@ -370,15 +370,15 @@ def build_script(claude=True):
         yield 5.0
 
         # -- 2. three real websites, at once -------------------------------
-        # box4 is deliberately left alone: the stop beat needs a box whose child
+        # heron is deliberately left alone: the stop beat needs a box whose child
         # has not started Playwright yet. See beat 7.
         d.beat("three boxes open three real websites at once")
         for box, (key, prompt) in zip(working, OPENING):
             d.send(box, prompt.format(url=PAGES[key]))
             yield 0.5
-        # No URL anywhere in this one, and box5 is still on about:blank -- so it
+        # No URL anywhere in this one, and robin is still on about:blank -- so it
         # has nothing to work with and has to come back and ask.
-        d.send(box5, "tell me what the first paragraph says")
+        d.send(robin, "tell me what the first paragraph says")
 
         # -- 3. the grid diverges on its own -------------------------------
         # Long enough that every child has answered with `working` before the
@@ -397,8 +397,8 @@ def build_script(claude=True):
         yield 2.0
         d.beat("answer its question; it carries on from there")
         yield from d.say(PAGES["example"])
-        yield d.until(lambda: d.state(box5) == session_model.DONE, 60.0,
-                      "box5 finishes")
+        yield d.until(lambda: d.state(robin) == session_model.DONE, 60.0,
+                      "robin finishes")
         yield 4.0
 
         # -- 5. one box up close -------------------------------------------
@@ -407,11 +407,11 @@ def build_script(claude=True):
         yield 1.5
         yield from d.point(app.overview.tile_centre(0))
         yield 0.6
-        app.enter_detail(box1)
+        app.enter_detail(wren)
         yield 5.5
 
         # -- 6. stop --------------------------------------------------------
-        # box4, the one left out of beat 2, and left out for this. Its child has
+        # heron, the one left out of beat 2, and left out for this. Its child has
         # never run a task, so its first one spends a second or two importing
         # Playwright and attaching over CDP -- and that is the window Stop lands
         # in. On a warm child the cancel would arrive after the run was over.
@@ -422,26 +422,26 @@ def build_script(claude=True):
         yield 1.2
         yield from d.point(app.overview.tile_centre(3))
         yield 0.5
-        app.enter_detail(box4)
+        app.enter_detail(heron)
         yield 1.2
         yield from d.say(f"open {PAGES['rfc']} and read it")
-        yield d.until(lambda: d.state(box4) == session_model.WORKING, 5.0,
-                      "box4 starts")
+        yield d.until(lambda: d.state(heron) == session_model.WORKING, 5.0,
+                      "heron starts")
         yield 1.0
         yield from d.point(app.detail.control_centre("stop"))
-        d.note(f"stop pressed while box4 was {d.state(box4)}")
+        d.note(f"stop pressed while heron was {d.state(heron)}")
         app.detail.stop()
         yield 4.0
 
         # -- 7. take control -------------------------------------------------
-        # box2, because its page is the one whose text is known: the script
+        # finch, because its page is the one whose text is known: the script
         # clicked a link there labelled FIND_TERM, so the find bar will match.
         d.beat("take control: the real window, on the desktop, with the keyboard")
         app.show_overview()
         yield 1.2
         yield from d.point(app.overview.tile_centre(1))
         yield 0.5
-        app.enter_detail(box2)
+        app.enter_detail(finch)
         yield 1.0
         yield from d.point(app.detail.control_centre("take control"))
         yield 0.5
@@ -451,7 +451,7 @@ def build_script(claude=True):
         # real keyboard. Nothing about it can be mistaken for a picture of a
         # browser. The foreground is checked first -- keystrokes go wherever the
         # keyboard is, and being wrong means typing into someone else's window.
-        if app.manager.holds_foreground(box2):
+        if app.manager.holds_foreground(finch):
             tap(VK_F, ctrl=True)
             yield 0.8
             type_into_page(FIND_TERM)
@@ -460,7 +460,7 @@ def build_script(claude=True):
             tap(VK_ESCAPE)
             yield 0.8
         else:
-            d.note("box2 did not hold the foreground; skipped the keyboard")
+            d.note("finch did not hold the foreground; skipped the keyboard")
             yield 2.0
         d.beat("look back at the dashboard and it parks itself")
         app.focus_window()   # what clicking the dashboard does
@@ -514,7 +514,7 @@ def build_script(claude=True):
         d.beat("watch one of them think")
         yield from d.point(app.overview.tile_centre(1))
         yield 0.5
-        app.enter_detail(box2)
+        app.enter_detail(finch)
         yield 10.0
 
         d.beat("the answers, and what they cost")

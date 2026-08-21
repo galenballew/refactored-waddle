@@ -36,7 +36,7 @@ composites those on the GPU and never hands Python any pixels, so an agent that
 wants to see a page takes its own `page.screenshot()`. That is what `_shoot`
 exists to prove.
 
-MULTIBOX_STEP_MS paces the stand-in only. Real work takes as long as it takes.
+AVIARY_STEP_MS paces the stand-in only. Real work takes as long as it takes.
 """
 
 import base64
@@ -53,7 +53,7 @@ import pipes
 from session import DONE, FAILED, IDLE, NEEDS_INPUT, WORKING
 
 POLL_S = 0.01
-STEP_S = int(os.environ.get("MULTIBOX_STEP_MS", "900")) / 1000.0
+STEP_S = int(os.environ.get("AVIARY_STEP_MS", "900")) / 1000.0
 NAV_TIMEOUT_MS = 20000
 CLICK_TIMEOUT_MS = 5000
 
@@ -279,7 +279,7 @@ class BrowserAgent(Agent):
         that an agent here can see, which the dashboard's tiles cannot give it."""
         data = self._page.screenshot()
         width, height = png_size(data)
-        path = Path(tempfile.gettempdir()) / f"multibox-{self.name}.png"
+        path = Path(tempfile.gettempdir()) / f"aviary-{self.name}.png"
         path.write_bytes(data)
         self.step(f"screenshot {width}x{height}, {len(data) // 1024} KB")
 
@@ -322,7 +322,7 @@ class BrowserAgent(Agent):
             self._playwright = None
 
 
-MODEL = os.environ.get("MULTIBOX_MODEL", "claude-opus-5")
+MODEL = os.environ.get("AVIARY_MODEL", "claude-opus-5")
 MAX_TURNS = 12          # a runaway loop is a runaway bill
 MAX_OUTPUT_TOKENS = 8000
 PAGE_TEXT_CHARS = 4000
