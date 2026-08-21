@@ -38,6 +38,23 @@ HOVER_MS = 120    # an affordance should feel instant, not animated
 STATE_MS = 260    # long enough to read as a change, short enough to ignore
 SWELL_MS = 1100   # the whole two-beat attention swell, start to still
 FADE_MS = 300     # a thumbnail arriving
+VIEW_MS = 600     # a whole view arriving, which is a bigger event than one tile
+
+# A view change decelerates from a standing start, like everything else here.
+# InOutCubic was tried and read as floaty: easing *in* means the first hundred
+# milliseconds are nearly still, and a transition that does not begin when you
+# click reads as the app hesitating rather than as it moving. Starting at once
+# and trailing off is the shape that feels answered. The length is what makes it
+# deliberate, and the length is what got raised.
+VIEW_CURVE = QEasingCurve.OutCubic
+
+# How loud the attention swell is at its peak. Strength is the lever here and
+# duration deliberately is not: a longer swell becomes a nag, a stronger one
+# stays an announcement. All three are read at the peak and scaled by the
+# animated value, so they rise and fall together.
+SWELL_LIFT = 0.70   # how far the frame's colour moves toward TEXT
+SWELL_WIDTH = 3.0   # extra pixels of frame
+SWELL_DOT = 2.4     # extra radius on the caption dot
 
 # The states worth interrupting someone for. The same two `session.py` calls
 # "the reason to look at the dashboard at all".
@@ -172,12 +189,39 @@ class TileMotion:
         if not self.hover.headed_for(target):
             self.hover.to(target, HOVER_MS)
 
-    def fade_in(self):
+    def fade_in(self, ms=FADE_MS, curve=QEasingCurve.OutCubic):
         """A tile arriving: a box just launched, or a view just opened."""
         self.opacity.jump(0.0)
-        self.opacity.to(1.0, FADE_MS)
+        self.opacity.to(1.0, ms, curve)
 
     @property
     def moving(self):
         return any(v.moving for v in
                    (self.blend, self.attention, self.hover, self.opacity))
+
+
+def fade_widget_in(effect, ms=VIEW_MS):
+    """Bring a widget up from transparent, and get out of the way afterwards.
+
+    A QPropertyAnimation straight onto the effect rather than a `Value`, because
+    unlike everything else in this module the thing being animated is already a
+    QObject with a property, and Qt repaints it itself -- there is nothing for
+    `request_draw` to coalesce.
+
+    The effect is switched off at the end and not merely set to 1.0. A live
+    QGraphicsOpacityEffect renders its whole subtree through an offscreen pixmap
+    on every paint, which is a real cost to leave running for the sake of a
+    number that is not changing any more.
+
+    The animation is parented to the effect: an unparented QPropertyAnimation is
+    collected the moment the last Python reference goes, and the fade never runs.
+    """
+    effect.setEnabled(True)
+    animation = QPropertyAnimation(effect, b"opacity", effect)
+    animation.setDuration(ms)
+    animation.setEasingCurve(VIEW_CURVE)
+    animation.setStartValue(0.0)
+    animation.setEndValue(1.0)
+    animation.finished.connect(lambda: effect.setEnabled(False))
+    animation.start(QPropertyAnimation.DeleteWhenStopped)
+    return animation

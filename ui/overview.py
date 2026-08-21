@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 import layout
 import session
 
-from . import theme
+from . import motion, theme
 from .text import clip, short_url
 
 LABEL_PAD = 12   # caption strip padding, above and below the text
@@ -319,8 +319,9 @@ class OverviewView:
             # five colours, and the movement is what carries the interruption.
             attention = mover.attention.get()
             if attention:
-                colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
-                width += 1.6 * attention
+                colour = theme.mix(colour, theme.TEXT,
+                                   motion.SWELL_LIFT * attention)
+                width += motion.SWELL_WIDTH * attention
 
         # Hover lifts whatever is already there. Never toward the accent: that
         # is reserved for things you can act on, and every tile is one, so
@@ -358,7 +359,7 @@ class OverviewView:
         # place you are already looking to find out which box it came from.
         colour = theme.mix(theme.state_qcolour(mover.previous),
                            theme.state_qcolour(state), mover.blend.get())
-        radius = 3.0 + 1.6 * mover.attention.get()
+        radius = 3.0 + motion.SWELL_DOT * mover.attention.get()
         centre_y = baseline - self.metrics.ascent() / 2
         painter.setPen(Qt.NoPen)
         painter.setBrush(colour)

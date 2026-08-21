@@ -360,8 +360,12 @@ def check_motion(app, manager):
     app.update()
     check("opening a box fades its mirror in", app.motion_of(box).opacity.get() < 1.0,
           app.motion_of(box).opacity.get())
-    pump(app, 0.5)
-    check("the fade finishes", app.motion_of(box).opacity.get() == 1.0)
+    # Waited out rather than slept through: the claim is that the fade ends, not
+    # that it ends inside whatever number was guessed here, and that number was
+    # wrong the first time a duration changed.
+    wait_until(app, app.motion_idle, 3.0)
+    check("the fade finishes", app.motion_of(box).opacity.get() == 1.0,
+          app.motion_of(box).opacity.get())
 
     # A box whose tile is behind another box's detail view changes state without
     # animating: the swell is an interruption, and there is nobody to interrupt.
