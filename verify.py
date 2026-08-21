@@ -105,7 +105,7 @@ def colour_page(name):
 
 def default_url():
     FIXTURE.write_text(
-        "<!doctype html><title>multibox verify</title><h1>multibox verify</h1>",
+        "<!doctype html><title>aviary verify</title><h1>aviary verify</h1>",
         encoding="utf-8",
     )
     return FIXTURE.as_uri()
@@ -463,7 +463,7 @@ def check_agent_drives(app, manager):
         actually = box.page.evaluate("location.href")
     except Exception as exc:
         actually = f"(could not ask the page: {str(exc).splitlines()[0]})"
-    shot = Path(tempfile.gettempdir()) / f"multibox-{box.name}.png"
+    shot = Path(tempfile.gettempdir()) / f"aviary-{box.name}.png"
     steps = " | ".join(session.steps)
 
     checks = {

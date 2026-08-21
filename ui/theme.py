@@ -20,7 +20,8 @@ themed or not, so there is no "use a classic widget to make the colour stick"
 rule to remember and no theme to switch away from first.
 """
 
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 
 import session
 
@@ -89,6 +90,47 @@ def mix(first, second, amount):
         round(first.green() + (second.green() - first.green()) * amount),
         round(first.blue() + (second.blue() - first.blue()) * amount),
     )
+
+
+NAME = "Aviary"
+
+
+def icon():
+    """The app's icon, painted rather than shipped.
+
+    There is not a single binary asset in this repo and this is not worth being
+    the first: the mark is four tiles, one of them lit, which is what the app
+    is. Drawn at several sizes into one QIcon because Windows picks between
+    them -- a 16px title bar and a 32px taskbar button want different amounts
+    of rounding, and letting one scale down to the other turns the gaps to mud.
+    """
+    pixmaps = QIcon()
+    for size in (16, 24, 32, 48, 64, 256):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        unit = size / 16.0
+        radius = max(1.0, 1.6 * unit)
+        painter.setBrush(QColor(BG))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(QRectF(0, 0, size, size), radius * 1.6, radius * 1.6)
+
+        pad, gap = 3.0 * unit, 1.4 * unit
+        cell = (size - pad * 2 - gap) / 2
+        for row in range(2):
+            for col in range(2):
+                lit = row == 0 and col == 1
+                rect = QRectF(pad + col * (cell + gap), pad + row * (cell + gap),
+                              cell, cell)
+                painter.setBrush(QColor(ACCENT if lit else EDGE_BRIGHT))
+                painter.setPen(QPen(QColor(ACCENT if lit else EDGE_BRIGHT),
+                                    max(1.0, 0.5 * unit)))
+                painter.drawRoundedRect(rect, radius, radius)
+        painter.end()
+        pixmaps.addPixmap(pixmap)
+    return pixmaps
 
 
 def fonts():

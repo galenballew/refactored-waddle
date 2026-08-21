@@ -25,8 +25,24 @@ import winfocus
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
 
+# The aviary, in order. Species rather than numbers because a name you can say
+# is easier to hold than an index -- "wren is waiting" beats "box 1 is waiting"
+# -- and every caption in the app is a name first.
+#
+# The order is the list's, and that is the whole point of writing it down: the
+# birds have no natural sequence, so without a fixed one "which box is third"
+# would stop having an answer. Chosen to be short enough for a caption, and no
+# two of the first twelve share a first letter, which is as far as `max_boxes`
+# reaches by default.
+AVIARY = (
+    "wren", "finch", "swift", "heron", "robin", "kestrel",
+    "plover", "egret", "magpie", "tern", "osprey", "curlew",
+    "raven", "snipe", "lark", "crane", "kite", "dove", "hawk", "starling",
+)
+
+
 DEFAULTS = {
-    "boxes": ["box1", "box2", "box3", "box4", "box5"],
+    "boxes": list(AVIARY[:5]),
     "start_url": "about:blank",
     "window_size": [1440, 900],
     "window_layout": "hidden",
@@ -52,19 +68,23 @@ def load_config(path=CONFIG_PATH):
     return config
 
 
-def next_box_name(names, stem="box"):
-    """`box7` after `box6`.
+def next_box_name(names, aviary=AVIARY, stem="bird"):
+    """The first unused bird, or `bird21` once the aviary is empty.
 
-    From the highest number seen rather than from the count, so that adding a box
-    after removing one cannot hand out a name that is already taken.
+    Taken rather than counted, so that adding a box after removing one cannot
+    hand out a name already in use -- and so that closing `finch` and adding
+    another gives you `finch` back rather than shuffling everything along.
     """
-    highest = 0
+    taken = set(names)
+    for bird in aviary:
+        if bird not in taken:
+            return bird
+    highest = len(aviary)
     for name in names:
         match = re.fullmatch(rf"{re.escape(stem)}(\d+)", name)
         if match:
             highest = max(highest, int(match.group(1)))
-    taken = set(names)
-    number = max(highest, len(names)) + 1
+    number = highest + 1
     while f"{stem}{number}" in taken:  # custom names could still collide
         number += 1
     return f"{stem}{number}"

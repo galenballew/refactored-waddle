@@ -11,7 +11,7 @@ machine are all exercised for real.
 What it cannot tell you: anything about thumbnails, window placement, focus or
 parking. That is `verify.py`, which needs real windows and a desktop session.
 
-The children are told to run their script fast (MULTIBOX_STEP_MS), or watching a
+The children are told to run their script fast (AVIARY_STEP_MS), or watching a
 stand-in pretend to work would take half a minute.
 """
 
@@ -24,7 +24,7 @@ import types
 from contextlib import redirect_stdout
 
 STEP_MS = 40
-os.environ["MULTIBOX_STEP_MS"] = str(STEP_MS)  # before any child is spawned
+os.environ["AVIARY_STEP_MS"] = str(STEP_MS)  # before any child is spawned
 
 import agent_host  # noqa: E402
 import layout  # noqa: E402
@@ -186,7 +186,7 @@ def check_task(app, manager):
     check("trajectory came back", len(state.steps) >= 2, f"{len(state.steps)} steps")
     check("the question is in the chat", state.turns[-1].speaker == box.name)
     check("other boxes are untouched",
-          all(app.sessions[n].state == model.IDLE for n in ("box1", "box2")))
+          all(app.sessions[n].state == model.IDLE for n in ("wren", "finch")))
 
     app.send(box, "the Team plan")
     settle(app, 6)
@@ -420,7 +420,8 @@ def check_fleet(app, manager):
     box = app.add_box()
     check("a box appears", box is not None and len(manager.boxes) == start + 1,
           box.name if box else "-")
-    check("named from the highest index", box.name == f"box{start + 1}", box.name)
+    check("named from the aviary, in order",
+          box.name == next_box_name([b.name for b in manager.boxes[:start]]), box.name)
     # Straight away, before the debounce window has passed: a click queued behind
     # the launch must be dropped rather than honoured late.
     check("a second add straight after is dropped",
@@ -584,7 +585,7 @@ def check_model_loop():
     print("\n[13] the model loop, with a fake model")
 
     def build(script):
-        agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+        agent = agent_host.ModelAgent("wren", "http://127.0.0.1:1")
         agent._client = _Recorder(script)
         agent._page = _FakePage()  # so _connect() short-circuits
         return agent
@@ -657,7 +658,7 @@ def check_model_loop():
         return Client()
 
     def _drive_broken(client):
-        agent = agent_host.ModelAgent("box1", "http://127.0.0.1:1")
+        agent = agent_host.ModelAgent("wren", "http://127.0.0.1:1")
         agent._client = client
         agent._sdk = types.SimpleNamespace(AuthenticationError=_Rejected)
         agent._page = _FakePage()
