@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deploy log — Pinion Ops</title>
+<link rel="stylesheet" href="ops.css">
+</head>
+<body>
+
+<header class="band">
+  <div class="bar">
+    <div class="mark">Pinion<span>.</span></div>
+    <nav>
+      <a href="/pinion/">Status</a>
+      <a href="/pinion/tickets">Tickets</a>
+      <a class="here" href="/pinion/changelog">Changelog</a>
+      <a href="/pinion/inventory">Inventory</a>
+      <a href="/pinion/runbook">Runbook</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Deploy log</h1>
+  <p class="lede">Everything that shipped today and yesterday, newest first.</p>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Service</th>
+          <th>Version</th>
+          <th>Shipped by</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num quiet">Today 14:20</td>
+          <td class="name">api-gateway</td>
+          <td class="num">4.18.2</td>
+          <td>D. Marchetti</td>
+          <td>Cache headers on error responses</td>
+        </tr>
+        <tr>
+          <td class="num quiet">Today 11:38</td>
+          <td class="name">search</td>
+          <td class="num">2.7.0</td>
+          <td>P. Lindqvist</td>
+          <td>Reindex on a background worker</td>
+        </tr>
+        <tr>
+          <td class="num quiet">Today 09:04</td>
+          <td class="name">payments-api</td>
+          <td class="num">9.3.0</td>
+          <td>R. Okafor</td>
+          <td>Retry policy on capture — <strong>suspected cause of the degradation</strong></td>
+        </tr>
+        <tr>
+          <td class="num quiet">Today 08:11</td>
+          <td class="name">notifications</td>
+          <td class="num">1.22.4</td>
+          <td>A. Vasquez</td>
+          <td>Digest batching window widened to five minutes</td>
+        </tr>
+        <tr>
+          <td class="num quiet">Yesterday 16:02</td>
+          <td class="name">search</td>
+          <td class="num">2.6.9</td>
+          <td>P. Lindqvist</td>
+          <td>Synonym table refresh</td>
+        </tr>
+        <tr>
+          <td class="num quiet">Yesterday 11:36</td>
+          <td class="name">ledger</td>
+          <td class="num">6.0.1</td>
+          <td>R. Okafor</td>
+          <td>Rounding fix on multi-currency refunds</td>
+        </tr>
+        <tr>
+          <td class="num quiet">Yesterday 09:48</td>
+          <td class="name">warehouse-sync</td>
+          <td class="num">3.11.0</td>
+          <td>A. Vasquez</td>
+          <td>Supplier feed poll interval halved</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Pinion Ops · internal · this page is fictional and exists to be read by a browser in a demo.</footer>
+</main>
+
+</body>
+</html>

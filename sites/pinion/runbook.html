@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runbook: payments-api degraded — Pinion Ops</title>
+<link rel="stylesheet" href="ops.css">
+</head>
+<body>
+
+<header class="band">
+  <div class="bar">
+    <div class="mark">Pinion<span>.</span></div>
+    <nav>
+      <a href="/pinion/">Status</a>
+      <a href="/pinion/tickets">Tickets</a>
+      <a href="/pinion/changelog">Changelog</a>
+      <a href="/pinion/inventory">Inventory</a>
+      <a class="here" href="/pinion/runbook">Runbook</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Runbook: payments-api Degraded</h1>
+  <p class="lede">Covers the Degraded state only. If the service is Offline, page Team Harbour and stop reading.</p>
+
+  <h2>Symptoms</h2>
+  <p>
+    Captures succeed on the second or third attempt. The status board shows
+    payments-api as Degraded, thirty-day uptime slips below 99.8%, and queue
+    depth on the capture worker climbs steadily rather than sawtoothing.
+  </p>
+
+  <h2>First checks, in order</h2>
+  <ol>
+    <li>Reload the status board: confirm the Degraded state is real and not a stale probe.</li>
+    <li>Check the deploy log for anything shipped to payments-api in the last hour.</li>
+    <li>Read queue depth on <code>hbr-app-01</code> and <code>hbr-app-02</code>.</li>
+    <li>If a host is Draining, take it out of the rotation properly rather than waiting.</li>
+  </ol>
+
+  <h2>Rollback</h2>
+  <p>
+    A Degraded payments-api caused by a deploy rolls back cleanly. Ship the
+    previous version, wait one full probe interval, and watch the pill go from
+    Degraded back to Operational. Never roll back twice without reading the
+    deploy log first.
+  </p>
+
+  <h2>Escalation</h2>
+  <p>
+    Thirty minutes Degraded, or any customer-visible failure, goes to Team
+    Harbour — and to Team Meridian at the same time if the ledger is involved,
+    because a retry that lands twice is a reconciliation problem before it is a
+    payments one.
+  </p>
+
+  <footer>Pinion Ops · internal · this page is fictional and exists to be read by a browser in a demo.</footer>
+</main>
+
+</body>
+</html>

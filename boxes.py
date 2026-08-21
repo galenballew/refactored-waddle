@@ -21,6 +21,7 @@ from typing import List, Optional, Set
 from playwright.sync_api import sync_playwright
 
 import layout
+import sites
 import winfocus
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -49,7 +50,7 @@ AVIARY = (
 
 DEFAULTS = {
     "boxes": list(AVIARY[:5]),
-    "start_url": "about:blank",
+    "start_url": sites.START_PAGE,
     "window_size": [1440, 900],
     "window_layout": "hidden",
     "max_boxes": 12,
@@ -71,6 +72,15 @@ def load_config(path=CONFIG_PATH):
         config.update(json.loads(Path(path).read_text(encoding="utf-8")))
     if not config["boxes"]:
         raise ValueError(f"{path}: 'boxes' is empty, so there is nothing to launch")
+
+    # A relative `start_url` is a page this repo ships and becomes a file:// URL;
+    # an absolute one belongs to somebody else and is launched exactly as
+    # written. The same distinction decides `bundled_start`, which is the only
+    # thing that lets a box's name be appended to the URL -- adding a query
+    # string to a stranger's page is not ours to do.
+    raw = str(config.get("start_url") or "")
+    config["bundled_start"] = bool(raw) and "://" not in raw and not raw.startswith("about:")
+    config["start_url"] = sites.resolve(raw)
     return config
 
 
@@ -192,6 +202,8 @@ class BoxManager:
     def _launch(self, name):
         width, height = self.config["window_size"]
         start_url = self.config["start_url"]
+        if start_url and self.config.get("bundled_start"):
+            start_url = sites.for_box(start_url, name)
         position = (LAUNCH_OFFSCREEN, LAUNCH_OFFSCREEN) if self.hidden else (0, 0)
 
         # Each box listens for CDP on its own port, so its agent can attach as an

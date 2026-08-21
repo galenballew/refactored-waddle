@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Service status — Pinion Ops</title>
+<link rel="stylesheet" href="ops.css">
+</head>
+<body>
+
+<header class="band">
+  <div class="bar">
+    <div class="mark">Pinion<span>.</span></div>
+    <nav>
+      <a class="here" href="/pinion/">Status</a>
+      <a href="/pinion/tickets">Tickets</a>
+      <a href="/pinion/changelog">Changelog</a>
+      <a href="/pinion/inventory">Inventory</a>
+      <a href="/pinion/runbook">Runbook</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Service status</h1>
+  <p class="lede">Six services. One of them is having a bad morning.</p>
+
+  <div class="banner">
+    <strong>payments-api is degraded.</strong>
+    Card captures are retrying and clearing on the second attempt. Owned by Team
+    Harbour; see the <a href="/pinion/runbook">runbook</a>.
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Status</th>
+          <th>Uptime, 30 days</th>
+          <th>Owner</th>
+          <th>Last deploy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">api-gateway</td>
+          <td><span class="pill ok">Operational</span></td>
+          <td class="num">99.98%</td>
+          <td>Team Harbour</td>
+          <td class="num quiet">Today 14:20</td>
+        </tr>
+        <tr>
+          <td class="name">payments-api</td>
+          <td><span class="pill warn">Degraded · 3h 41m</span></td>
+          <td class="num">99.71%</td>
+          <td>Team Harbour</td>
+          <td class="num quiet">Today 09:04</td>
+        </tr>
+        <tr>
+          <td class="name">ledger</td>
+          <td><span class="pill ok">Operational</span></td>
+          <td class="num">99.99%</td>
+          <td>Team Meridian</td>
+          <td class="num quiet">18 Aug 11:36</td>
+        </tr>
+        <tr>
+          <td class="name">search</td>
+          <td><span class="pill ok">Operational</span></td>
+          <td class="num">99.95%</td>
+          <td>Team Meridian</td>
+          <td class="num quiet">19 Aug 16:02</td>
+        </tr>
+        <tr>
+          <td class="name">notifications</td>
+          <td><span class="pill ok">Operational</span></td>
+          <td class="num">99.90%</td>
+          <td>Team Sable</td>
+          <td class="num quiet">Today 08:11</td>
+        </tr>
+        <tr>
+          <td class="name">warehouse-sync</td>
+          <td><span class="pill ok">Operational</span></td>
+          <td class="num">99.82%</td>
+          <td>Team Sable</td>
+          <td class="num quiet">17 Aug 09:48</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Pinion Ops · internal · this page is fictional and exists to be read by a browser in a demo.</footer>
+</main>
+
+</body>
+</html>

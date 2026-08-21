@@ -22,12 +22,14 @@ import sys
 import time
 import types
 from contextlib import redirect_stdout
+from pathlib import Path
 
 STEP_MS = 40
 os.environ["AVIARY_STEP_MS"] = str(STEP_MS)  # before any child is spawned
 
 import agent_host  # noqa: E402
 import layout  # noqa: E402
+import sites  # noqa: E402
 import session as model  # noqa: E402
 import thumbs  # noqa: E402
 
@@ -268,6 +270,7 @@ def check_controls(app, manager):
 def check_attention(app, manager):
     """Finding the box that wants you, without reordering anything."""
     print("\n[6] attention")
+    fleet_size = len(manager.boxes)
     box = manager.boxes[0]
     app.send(box, "the first task, which always asks")
     settle(app, 4)
@@ -290,6 +293,38 @@ def check_attention(app, manager):
     app.overview.go_to_waiting()
     app.update()
     check("and it opens that box", app.box is box)
+
+    # The jump button is the one control in this app allowed to be loud, and it
+    # is only allowed to be loud while it has something to say.
+    app.show_overview()
+    app.update()
+    check("the button is armed", app.overview.jump.property("armed") is True)
+    check("and swelled to say so", app.overview.attention_moving())
+
+    wait_until(app, lambda: not app.overview.attention_moving(), 2.0)
+    # A box of this group's own. The stand-in only asks on a box's *first* task,
+    # so borrowing one another group is going to use would spend that first task
+    # here and quietly break a check three groups later.
+    second = app.add_box()
+    app.send(second, "another first task, which also asks")
+    settle(app, 4)
+    check("a second box waiting is counted",
+          "+1 more" in app.overview.jump_text(), app.overview.jump_text())
+    # Not news about the button: it already said someone was waiting. A swell per
+    # arrival is the perpetual pulse the whole motion vocabulary exists to avoid.
+    check("but it does not swell again", not app.overview.attention_moving())
+
+    for waiter in list(app.waiting()):
+        app.send(waiter, "https://example.com")
+    settle(app, 6)
+    check("nobody waiting disarms it",
+          app.overview.jump.property("armed") is False)
+    check("and it stops offering a box",
+          app.overview.jump_text() == "Nothing needs you", app.overview.jump_text())
+
+    app.remove_box(second)
+    check("and the fleet is as this group found it",
+          len(manager.boxes) == fleet_size, f"{len(manager.boxes)} boxes")
 
 
 def check_motion(app, manager):
@@ -317,7 +352,10 @@ def check_motion(app, manager):
     check("a new box fades its tile in", box is not None and mover.opacity.get() < 1.0,
           mover.opacity.get() if box else "no box")
 
-    pump(app, 0.5)
+    # Wait for the app to be still rather than for a guessed number of
+    # milliseconds: the previous group left the jump button swelling, and that
+    # counts as the dashboard moving because it is.
+    wait_until(app, app.motion_idle, 2.5)
     check("a box at rest is not moving", not mover.moving)
     check("and the dashboard agrees", app.motion_idle())
 
@@ -822,6 +860,69 @@ def check_director(app, manager):
     check("flushing does not throw", True)
 
 
+def check_sites():
+    """The pages this repo ships, and both ways a box reaches them.
+
+    No browser: what is being checked is the plumbing -- that a relative
+    `start_url` becomes a real file, that somebody else's URL is left alone, and
+    that every route the demo drives a box to answers the way the demo assumes,
+    including the one that has to 404.
+    """
+    print("\n[16] the pages this repo ships")
+    from urllib.parse import unquote, urlparse
+    from urllib.request import url2pathname, urlopen
+
+    config = load_config()
+    start = config["start_url"]
+    path = Path(url2pathname(unquote(urlparse(start).path)))
+    check("config.json's start page resolves to a real file",
+          start.startswith("file:") and path.is_file(), start)
+    check("and the config says it is one of ours", config["bundled_start"] is True)
+
+    check("someone else's URL is left exactly as configured",
+          sites.resolve("https://intranet.example/home") == "https://intranet.example/home")
+    check("about:blank still means about:blank",
+          sites.resolve("about:blank") == "about:blank")
+    check("a box's name goes on the end",
+          sites.for_box("file:///x/start.html", "Wren") == "file:///x/start.html?box=Wren")
+    check("and joins a query that is already there",
+          sites.for_box("http://h/s?a=1", "Finch") == "http://h/s?a=1&box=Finch")
+    check("the start page has somewhere to put the name",
+          'id="name"' in path.read_text(encoding="utf-8"))
+
+    # The first anchor on a Pinion page must be a real, visible link. An agent
+    # that clicks the first `a[href]` finds the nav here; on Wikipedia, MDN and
+    # the Python docs it finds a hidden "skip to content" link, waits for it to
+    # become clickable, and the box ends `failed`.
+    for page in sorted((sites.SITES_DIR / "pinion").glob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        first_link = text.index("<a ")
+        check(f"{page.name}: the first link is in the nav",
+              text.index("<nav") < first_link < text.index("</nav>"))
+
+    base, stop = sites.serve()
+    try:
+        for route in ("/start.html", "/pinion/", "/pinion/tickets",
+                      "/pinion/changelog", "/pinion/inventory", "/pinion/runbook"):
+            try:
+                with urlopen(base + route) as answer:
+                    ok = answer.status == 200 and len(answer.read()) > 500
+            except Exception as exc:   # noqa: BLE001 - the check is the report
+                ok, answer = False, exc
+            check(f"served: {route}", ok)
+        # The churn act sends a box here on purpose. A staged failure would be a
+        # lie about the state machine; this one is a real 404 from our own
+        # server, so it fails the same way with no network at all.
+        try:
+            with urlopen(base + "/pinion/deploys/482"):
+                missing = False
+        except Exception as exc:   # noqa: BLE001
+            missing = getattr(exc, "code", None) == 404
+        check("and the demo's dead link really 404s", missing)
+    finally:
+        stop()
+
+
 def main():
     manager = FakeManager(load_config())
     app = App(manager)
@@ -842,6 +943,7 @@ def main():
         check_model_loop()
         check_agent_flag()
         check_geometry()
+        check_sites()
     finally:
         for agent in app.agents.values():
             agent.close()

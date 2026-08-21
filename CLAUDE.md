@@ -98,6 +98,14 @@ ui/           only package that touches Qt
   theme.py    the palette, the fonts, and the stylesheet
   text.py     URL captions. `clip` takes a measuring function, not a font,
               so nothing here knows which toolkit is drawing
+sites/        the pages this repo ships. `start.html` is what a new box opens
+              on -- it reads `?box=Wren` and says so in type big enough to
+              survive a tile. `pinion/` is an invented company's internal tools,
+              for the demo: pages whose content does not move between takes
+sites.py      resolving a bundled page to a `file://` URL, and serving one over
+              local HTTP for the demo, because the address bar is on camera.
+              The server's thread is the only one in the repo and touches
+              neither Qt nor Playwright; nothing in the app calls `serve`
 thumbs.py     ctypes/dwmapi: live window thumbnails
 winfocus.py   ctypes/user32: match windows to PIDs, force foreground, move
               windows, and drop them from the taskbar and Alt-Tab
@@ -205,6 +213,18 @@ with a correctness constraint worth testing.
   live view of the box being pointed at, which is worse than having no hover
   state. `CARD_INSET` is the whole budget: a heavier frame or an outer glow runs
   into the neighbouring card.
+- **A relative `start_url` is ours and an absolute one is not.** `load_config`
+  resolves a path against the repo into a `file://` URL and sets
+  `bundled_start`; that flag is the only thing that lets `?box=<name>` be
+  appended, because adding a query string to a URL somebody else configured is
+  not ours to do. The demo overrides both with its local HTTP server.
+- **The jump button is the only loud control, and only while it is armed.** It
+  wears the `needs input` colour rather than the accent -- it counts boxes in
+  that state, and the tiles it points at are already that colour. It swells on
+  the *rising* edge only: a second box joining the queue is not news about the
+  button, and a swell per arrival is the perpetual pulse the motion vocabulary
+  exists to avoid. `App.motion_idle` includes it, because a swelling button is
+  the dashboard moving.
 - **`session.py` decides nothing.** State changes come from the driver. A view
   that sets a state itself is a bug, however convenient.
 - **Nothing is broadcast any more.** The dashboard has no fan-out control at all: a
