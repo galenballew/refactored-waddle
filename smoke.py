@@ -933,9 +933,27 @@ def check_pointer(app, manager):
     app.detail.clear_entry()
     check("and clear the line to start again", app.detail.entry_text() == "")
 
-    check("a glide is a generator of hops, not a jump",
-          len(list(clicks.glide((0, 0), hops=9))) == 9)
-    check("and going nowhere is not an error", list(clicks.glide(None)) == [])
+    # Without this the check drags the real pointer to the corner of the screen,
+    # which is a rude thing for a test to do to somebody's desktop.
+    # `where` too, not just `move`: a glide measures from wherever the pointer
+    # actually is, so without a fixed origin this check would be about where the
+    # mouse was left rather than about the glide.
+    moved = []
+    real_move, real_where = clicks.move, clicks.where
+    clicks.move = lambda x, y: moved.append((x, y))
+    clicks.where = lambda: (0, 0)
+    try:
+        short = len(list(clicks.glide((10, 10))))
+        far = len(list(clicks.glide((1600, 900))))
+    finally:
+        clicks.move, clicks.where = real_move, real_where
+    check("a glide is a path, not a jump", short >= 2 and bool(moved))
+    check("and a longer move takes longer, like a hand", far > short, f"{short} -> {far}")
+    check("a hand crosses 900px in about a second",
+          1.0 <= clicks.travel_time(900) <= 1.4, f"{clicks.travel_time(900):.2f}s")
+    check("and never faster than it could",
+          clicks.travel_time(900) / 900 * 1000 > 1.0)
+    check("going nowhere is not an error", list(clicks.glide(None)) == [])
     app.show_overview()
     app.update()
 

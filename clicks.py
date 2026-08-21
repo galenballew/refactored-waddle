@@ -42,6 +42,24 @@ KEYEVENTF_KEYUP = 0x0002
 # handler -- and short enough to read as a click rather than a drag.
 PRESS_S = 0.09
 
+# How a move is paced, and this is the part that has to look human rather than
+# merely be real.
+#
+# Screen recorders smooth the pointer. They sample it and run the samples through
+# a filter tuned for a hand, and a hand does not cross nine hundred pixels in
+# half a second -- so a move that fast leaves the filter still catching up
+# seconds after the real cursor has stopped, which plays back as a slow straight
+# crawl that arrives about when the next click happens. Live it looks perfect,
+# because live it is; the crawl is the recorder's, drawn from our numbers.
+#
+# So travel time grows with distance, the way aimed movement does: a fixed cost
+# to start and stop, plus about a millisecond per pixel. Nine hundred pixels
+# takes roughly 1.1 seconds and peaks near 1200 px/s, which is inside what a hand
+# does. Steps are small and frequent so a sampler sees a path rather than a jump.
+HOP_S = 0.016            # ~60 positions a second
+TRAVEL_FIXED_S = 0.26    # getting going and stopping again
+TRAVEL_PER_PX = 1 / 1100  # and the distance in between
+
 # Two clicks inside this are a double-click. Windows' own setting is usually
 # 500ms; well under it, because the beat that opens a box depends on Qt agreeing
 # that this was one gesture.
@@ -61,21 +79,32 @@ def move(x, y):
     user32.SetCursorPos(int(x), int(y))
 
 
-def glide(target, hops=14, ease=3):
+def travel_time(distance):
+    """How long a hand would take to move that far, in seconds."""
+    return TRAVEL_FIXED_S + abs(distance) * TRAVEL_PER_PX
+
+
+def glide(target, hop_s=HOP_S):
     """Yield the pointer's way to `target`, a hop at a time.
 
     A generator, because the director's beats are `app.schedule` callbacks and
     nothing in this app is allowed to sleep on the UI thread: the caller yields
-    between hops and the layout tick and the agent pump keep running. Eased out,
-    so the pointer arrives rather than stops.
+    between hops, and the layout tick and the agent pump keep running.
+
+    Eased in *and* out -- smoothstep, so the pointer is stationary at both ends
+    and quickest in the middle. Easing only out means starting at full speed,
+    which is the shape of a teleport with a tail on it and exactly what a cursor
+    smoother renders badly.
     """
     if target is None:
         return
     x0, y0 = where()
-    for hop in range(1, hops + 1):
-        fraction = hop / hops
-        move(x0 + (target[0] - x0) * (1 - (1 - fraction) ** ease),
-             y0 + (target[1] - y0) * (1 - (1 - fraction) ** ease))
+    span = ((target[0] - x0) ** 2 + (target[1] - y0) ** 2) ** 0.5
+    steps = max(2, round(travel_time(span) / hop_s))
+    for step in range(1, steps + 1):
+        fraction = step / steps
+        eased = fraction * fraction * (3 - 2 * fraction)   # smoothstep
+        move(x0 + (target[0] - x0) * eased, y0 + (target[1] - y0) * eased)
         yield
 
 
