@@ -20,15 +20,15 @@ at the dashboard at all. Everything else is progress you can ignore.
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-IDLE = "idle"
-WORKING = "working"
-NEEDS_INPUT = "needs input"
-DONE = "done"
-FAILED = "failed"
+IDLE = "Idle"
+WORKING = "Working"
+NEEDS_INPUT = "Needs input"
+DONE = "Done"
+FAILED = "Failed"
 
 STATES = (IDLE, WORKING, NEEDS_INPUT, DONE, FAILED)
 
-USER = "you"
+USER = "You"
 
 
 @dataclass

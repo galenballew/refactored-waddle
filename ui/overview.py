@@ -21,14 +21,10 @@ import layout
 import session
 
 from . import motion, theme
-from .text import clip, short_url
+from .text import clip, greeting, short_url
 
 LABEL_PAD = 12   # caption strip padding, above and below the text
 PAD = 14
-TITLE_GAP = 12       # between the title and the hint
-COUNTS_GAP = 14      # between the counts and the jump button
-COUNT_GAP = 12       # between one state count and the next
-MIN_HEADER_GAP = 24  # the gap the hint may never be squeezed below
 
 
 class TileCanvas(QWidget):
@@ -105,13 +101,12 @@ class OverviewView:
         outer.setSpacing(4)
 
         header = QHBoxLayout()
-        self.title = QLabel(theme.NAME)
+        # Not the app's name: the title bar says that, and repeating it spends
+        # the largest type on screen on something already read. This is the one
+        # line that talks to the person rather than about the boxes.
+        self.title = QLabel(greeting())
         self.title.setObjectName("head")
-        self.hint = QLabel("Double-click a box to open it")
-        self.hint.setObjectName("muted")
         header.addWidget(self.title)
-        header.addSpacing(12)
-        header.addWidget(self.hint)
         header.addStretch(1)
 
         # One label per state rather than one string, so each count is in its own
@@ -140,6 +135,11 @@ class OverviewView:
         self.canvas = TileCanvas(self)
         outer.addWidget(self.canvas, 1)
 
+        self.hint = QLabel("Double-click a box to open it")
+        self.hint.setObjectName("muted")
+        self.hint.setAlignment(Qt.AlignCenter)
+        outer.addWidget(self.hint)
+
         self._controls = {"jump": self.jump}
 
     # -- view protocol ------------------------------------------------------
@@ -154,25 +154,6 @@ class OverviewView:
         # Leaving by double-click means the pointer never crosses a tile edge on
         # the way out, so nothing else would ever put this tile down.
         self.hover(None, None)
-
-    def _fit_header(self):
-        """Drop the hint when the header cannot hold everything.
-
-        The stretch between the hint and the counts is the first thing to
-        collapse in a narrow window, and nothing stops the two texts touching
-        once it has -- which reads as a rendering fault rather than as a tight
-        window. The hint is the only decoration up there; the counts and the
-        jump button both carry information, so the hint is what goes.
-        """
-        counts = sum(label.sizeHint().width()
-                     for label in self.counts.values() if label.isVisible())
-        counts += COUNT_GAP * max(0, sum(
-            1 for label in self.counts.values() if label.isVisible()) - 1)
-        needed = (self.title.sizeHint().width() + counts
-                  + self.jump.sizeHint().width() + TITLE_GAP + COUNTS_GAP
-                  + MIN_HEADER_GAP)
-        room = self.frame.width() - 2 * PAD - needed
-        self.hint.setVisible(room >= self.hint.sizeHint().width())
 
     def relayout(self):
         # One cell past the fleet: the last tile is "+ Add box", laid out with
@@ -213,6 +194,7 @@ class OverviewView:
         Pointing at a box is navigation, not prioritising: the tiles never
         reorder, nothing is scored, and nothing moves unless you click.
         """
+        self.title.setText(greeting())
         counts = self.app.state_counts()
         for state in session.STATES:
             label = self.counts[state]
@@ -225,12 +207,10 @@ class OverviewView:
         if not waiting:
             self.jump.setText("Nothing needs you")
             self.jump.setEnabled(False)
-            self._fit_header()
             return
         extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
         self.jump.setText(f"Go to {waiting[0].name}{extra}  →")
         self.jump.setEnabled(True)
-        self._fit_header()
 
     def go_to_waiting(self):
         waiting = self.app.waiting()

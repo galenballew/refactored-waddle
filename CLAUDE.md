@@ -27,19 +27,30 @@ distinction is load-bearing: a hidden, minimized or cloaked window is not
 composited, and its tile goes blank. This is about desktop citizenship, not
 isolation — see the ephemeral-profiles note below.
 
-**Capitalisation is a rule, not a mood.** The five state words -- `idle`,
-`working`, `needs input`, `done`, `failed` -- are always lowercase: they are
-values in a vocabulary and they appear inline, in `1 needs input` and next to a
-dot in a caption, where a capital would be wrong. Everything else a person reads
-starts with one: buttons, notes, placeholders, hints, prose. `TRAJECTORY` is the
-single exception, and it is a typographic one -- it is letter-spaced small caps
-because it is a section label, not a sentence. Box names keep their own casing
-wherever they appear, including at the start of a sentence, because they are
-identifiers.
+**Everything a person reads is capitalised**, including the state words and the
+box names. `session.IDLE` is `"Idle"`, `session.USER` is `"You"`, and the birds
+in `boxes.AVIARY` are `"Wren"`, `"Finch"` and so on. The state words are protocol
+values shared with the child over the wire as well as labels, so they are
+capitalised at the constant and never at the point of display -- both ends import
+them from `session.py`, which is what makes changing one safe. Same for the
+birds: the name *is* `Wren`, in the config, in the session keys, in the
+screenshot path, so nothing has to remember to title-case it on the way out.
+
+Agent text is capitalised at its source too, in `agent_host.py`, rather than by
+the view. A view that capitalised the first letter of everything it drew would
+also capitalise whatever the user had just typed into the chat, which is not the
+view's to change.
+
+`TRAJECTORY` stays as letter-spaced small caps -- it is a section label, not a
+sentence.
 
 The app is called **Aviary**, and the name lives in one place: `theme.NAME`. The
-window title, the wordmark, the taskbar identity and the icon all read it from
-there. Boxes are named after birds from `boxes.AVIARY` rather than numbered.
+window title, the taskbar identity and the icon all read it from there. The
+overview does not: its heading greets whoever is logged in, because the title bar
+has already said the name and repeating it would spend the largest type on
+screen on something you have read. Boxes are named after birds from `boxes.AVIARY` rather than numbered. The
+overview's heading is a greeting rather than the app's name, because the title
+bar already carries the name; `ui/text.greeting` builds it.
 
 ## Commands
 

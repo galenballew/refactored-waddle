@@ -37,13 +37,13 @@ CONFIG_PATH = Path(__file__).with_name("config.json")
 AVIARY = (
     # The first twenty-two have twenty-two different initials, so a name is
     # never one glance away from another one.
-    "wren", "finch", "swift", "heron", "robin", "kestrel",
-    "plover", "egret", "magpie", "tern", "osprey", "curlew",
-    "jay", "ibis", "avocet", "bittern", "godwit", "quail",
-    "vireo", "nightjar", "dove", "lark",
+    "Wren", "Finch", "Swift", "Heron", "Robin", "Kestrel",
+    "Plover", "Egret", "Magpie", "Tern", "Osprey", "Curlew",
+    "Jay", "Ibis", "Avocet", "Bittern", "Godwit", "Quail",
+    "Vireo", "Nightjar", "Dove", "Lark",
     # Past here initials start repeating, which only matters once someone has
     # raised `max_boxes` well beyond its default of twelve.
-    "raven", "snipe", "crane", "kite", "hawk", "starling", "dunlin", "merlin",
+    "Raven", "Snipe", "Crane", "Kite", "Hawk", "Starling", "Dunlin", "Merlin",
 )
 
 
@@ -74,7 +74,7 @@ def load_config(path=CONFIG_PATH):
     return config
 
 
-def next_box_name(names, aviary=AVIARY, stem="bird"):
+def next_box_name(names, aviary=AVIARY, stem="Bird"):
     """The first unused bird, or `bird21` once the aviary is empty.
 
     Taken rather than counted, so that adding a box after removing one cannot

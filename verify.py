@@ -33,6 +33,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 import layout
+import session as model
 import thumbs
 import winfocus
 
@@ -456,7 +457,7 @@ def check_agent_drives(app, manager):
 
     app.send(box, f"open {target}")
     deadline = time.time() + CDP_BUDGET_S
-    while time.time() < deadline and session.state in ("idle", "working"):
+    while time.time() < deadline and session.state in (model.IDLE, model.WORKING):
         pump(app, 0.2)
 
     try:
@@ -467,11 +468,11 @@ def check_agent_drives(app, manager):
     steps = " | ".join(session.steps)
 
     checks = {
-        "finished the task": session.state == "done",
+        "finished the task": session.state == model.DONE,
         "reported the page": session.url == target,
         "the browser agrees": actually == target,
-        "connected over CDP": "connected over CDP" in steps,
-        "took a screenshot": "screenshot" in steps and shot.exists(),
+        "connected over CDP": "Connected over CDP" in steps,
+        "took a screenshot": "Screenshot" in steps and shot.exists(),
     }
     print(f"    state={session.state} url={session.url}")
     print(f"    the page itself says {actually}")
