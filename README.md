@@ -179,7 +179,8 @@ three questions to the demo agent instead, and is what rehearsals should use.
 
 **It drives the real mouse.** The pointer travels to each control and the button
 goes down and up, because the recording is as much about the cursor as the
-screen. The exception is the moment six windows are given work at once, which is
+screen. Between clicks it does not move at all: eight moves, eight presses, and
+the cursor is parked for about 148 of the 152 seconds. The exception is the moment six windows are given work at once, which is
 the thing a person cannot do by hand and the reason the app exists; that goes
 through the same call the chat box makes.
 

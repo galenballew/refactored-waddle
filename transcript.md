@@ -28,12 +28,12 @@ breath without the reader working out where the emphasis goes, it is too written
 the fan-out, at the end of the model act, and on the way out. A reel where nobody
 ever says the name is an advert for a category.
 
-Times are nominal, at `--pace 1.0`. **The whole thing runs about 2:18 to 3:08**,
+Times are nominal, at `--pace 1.0`. **The whole thing runs about 2:22 to 3:12**,
 and the range is the model act at the end -- three model loops decide how many
 turns they need. Cut against the beat sheet `demo.py` prints when it finishes.
 
 Read at about 150 words a minute. Each beat gives its word budget and every line
-is inside it, with room left over: about 2:15 of speech across a 2:28 film, so
+is inside it, with room left over: about 2:10 of speech across a 2:32 film, so
 there is silence to sit in.
 
 `narration.txt` is this file with everything but the spoken words taken out. It
@@ -71,8 +71,8 @@ immediately leaving the screen, the dashboard opening centred.
 
 ## five live windows, one dashboard · 0:00 · 9s · 21 words
 
-**On screen:** five large tiles, all on the same quiet start page. The pointer
-drifts across the grid, lifting a frame as it passes.
+**On screen:** five large tiles, all on the same quiet start page. Nothing is
+moving, including the pointer.
 
 > Each tile is one of those browsers, live. I can see what all five are doing
 > without opening a single window.
@@ -89,12 +89,10 @@ launches, parks itself, and the grid reflows to six.
 
 ---
 
-## six tasks, three seconds · 0:16 · 38s · 90 words
-
-**On screen:** six boxes given work inside three seconds, then thirty seconds of
-the grid diverging on its own — tiles going blue, then green, one going red, one
-going amber. The counts move in the header. The pointer wanders the grid.
-Nothing changes position.
+## six tasks, three seconds · 0:17 · 38s · tiles going blue, then green, one going red, one
+going amber. The counts move in the header. The pointer sits where it last
+clicked and the tiles never change position, so the only movement is the state
+of the fleet.
 
 > This is what I use it for. I'm giving all six of them something to do
 > at once, then leaving them alone.
@@ -109,10 +107,7 @@ Nothing changes position.
 
 ---
 
-## the one that needs you, and answering it · 0:54 · 22s · 52 words
-
-**On screen:** the amber button in the corner is pressed; the detail view opens
-on the box that asked; a URL is typed into its chat a character at a time and
+## the one that needs you, and answering it · 0:54 · 24s · time and
 sent; the run picks up where it stopped.
 
 > That amber button means one of them is waiting on me. I click it and I'm
@@ -122,7 +117,7 @@ sent; the run picks up where it stopped.
 
 ---
 
-## take control: the real window, with the keyboard · 1:16 · 10s · 20 words
+## take control: the real window, with the keyboard · 1:18 · 11s · 20 words
 
 **On screen:** Take control, and the real Chromium window arrives on the desktop.
 Ctrl+F opens Chrome's own find bar, `Degraded` is typed into it, matches
@@ -133,7 +128,7 @@ highlight. Escape, and the window goes back to its slot.
 
 ---
 
-## same seam, different driver · 1:26 · 1s · no line
+## same seam, different driver · 1:29 · 1s · no line
 
 **On screen:** three notes in the console as each child is replaced. One second
 long — nothing to say over it; the line below covers both beats.
@@ -143,7 +138,7 @@ script still driving**. Use it to rehearse; do not narrate it as the real thing.
 
 ---
 
-## three questions no script could answer · 1:27 · 55s · 88 words
+## three questions no script could answer · 1:30 · 55s · 88 words
 
 **On screen:** three questions sent at once; three tiles going to work; then one
 box up close, its trajectory filling with tool calls nobody scripted. The answers
@@ -165,7 +160,7 @@ sentence until the cost lines appear.
 
 ---
 
-## close the dashboard; every window goes with it · ~2:22 · ~6s · 13 words
+## close the dashboard; every window goes with it · ~2:26 · ~6s · 13 words
 
 **On screen:** back to the grid, then the app closing.
 

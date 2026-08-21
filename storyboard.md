@@ -8,21 +8,28 @@ not be in either.
 demonstrate the app, it is to say what the app is for, and then get out. A viewer
 does not need to watch a thing happen; they need to see that it happened.
 
-Target: **2:28 nominal, 2:18 to 3:08 in practice**. The range is the model act at
+Target: **2:32 nominal, 2:22 to 3:12 in practice**. The range is the model act at
 the end -- three model loops decide how many turns they need.
 
 ---
 
 ## The three rules this version is built on
 
-**1. The cursor is real.** Every control the reel presses is pressed: the pointer
-travels to it and the left button goes down and up, through `clicks.py`, and
-Windows delivers the click to the dashboard's own widget. This is not about
-authenticity for its own sake -- video editors track the cursor, and a demo that
+**1. The cursor is real, and it is still unless it is about to do something.**
+Every control the reel presses is pressed: the pointer travels to it and the left
+button goes down and up, through `clicks.py`, and Windows delivers the click to
+the dashboard's own widget. Video editors track the cursor, and a demo that
 changes the app by calling its methods produces footage where things happen and
-nothing moves. Between beats the pointer drifts across the grid rather than
-parking, so there is always something to follow, and drifting over a tile lifts
-its frame on the way past, which is the app's own hover state doing the work.
+nothing moves.
+
+The corollary took a recording to learn. An earlier version drifted the pointer
+across the grid during idle stretches, on the theory that a tracker wants
+something to follow. What that actually looks like on tape is a cursor sliding
+across the screen in a dead straight line at a constant speed for ten seconds --
+not a thing a hand does, and worse than stillness. So there are eight pointer
+moves in the reel and eight presses, each move welded to the press it belongs to:
+half a second of travel, half a second of arrival, then the button. The pointer
+is stationary for about 148 of the film's 152 seconds.
 
 The single exception is **the fan-out**, and it cannot be anything else. Six
 boxes get a task inside three seconds; a person can only type into one box at a
@@ -100,12 +107,12 @@ is what makes it able to ask at all.
 |---|---|---|---|
 | 1 | five live windows, one dashboard | 0:00 | 9s |
 | 2 | one more, on camera | 0:09 | 8s |
-| 3 | six tasks, three seconds | 0:16 | 38s |
-| 4 | the one that needs you, and answering it | 0:54 | 22s |
-| 5 | take control: the real window, with the keyboard | 1:16 | 10s |
-| 6 | same seam, different driver | 1:26 | 1s |
-| 7 | three questions no script could answer | 1:27 | 55s |
-| 8 | close the dashboard; every window goes with it | 2:22 | 6s |
+| 3 | six tasks, three seconds | 0:17 | 38s |
+| 4 | the one that needs you, and answering it | 0:54 | 24s |
+| 5 | take control: the real window, with the keyboard | 1:18 | 11s |
+| 6 | same seam, different driver | 1:29 | 1s |
+| 7 | three questions no script could answer | 1:30 | 55s |
+| 8 | close the dashboard; every window goes with it | 2:26 | 6s |
 
 Computed from `demo.py`'s own holds plus the measured length of each wait -- a
 cold demo-agent task is about 13 seconds, a real Chromium launch about 3, a
@@ -120,8 +127,7 @@ taste, and `--pace` is the lever for a slower narrator.
 ### 1 - Five live windows, one dashboard - 0:00 - 9s
 
 Five large tiles, all on the same quiet start page. Every count in the header is
-hidden and the button in the corner is grey. The pointer drifts across the grid
-and a frame lifts as it passes.
+hidden and the button in the corner is grey. Nothing on screen is moving.
 
 The opening has to establish two things before anything happens: these are real
 windows, and there is only one of them on your desktop.
@@ -139,7 +145,8 @@ doing the work.
 
 Six boxes given work inside three seconds, then thirty seconds of the grid
 diverging on its own. Tiles go blue, then green; one goes red; one goes amber.
-The counts move. The pointer wanders the grid. Nothing changes position.
+The counts move. The pointer is still and the tiles never move, so everything
+changing on screen is the fleet.
 
 The centre of the reel, and the only shot that shows a fleet rather than an app.
 Three of the pages are ours and two are the real internet, and the dashboard does
