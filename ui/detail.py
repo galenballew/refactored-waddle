@@ -55,7 +55,7 @@ TRAJECTORY_MAX_W = 460
 CHAT_LINES = 5
 EMPTY_CHAT = ("No task yet. Whatever you send goes to this box's agent — a "
               "separate process, driving the browser in the live view.")
-EMPTY_TRAJECTORY = "no activity yet"
+EMPTY_TRAJECTORY = "No activity yet"
 
 
 class ViewportCanvas(QWidget):
@@ -332,7 +332,7 @@ class DetailView:
             painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
             painter.setFont(self.font)
             painter.setPen(theme.qcolour(theme.EMPTY_TEXT))
-            painter.drawText(rect, Qt.AlignCenter, "no window")
+            painter.drawText(rect, Qt.AlignCenter, "No window")
             return
         # The same frame a tile gets, outside the mirror for the same reason: a
         # thumbnail composites above this widget, so a border on the boundary
@@ -510,7 +510,7 @@ class DetailView:
         if self.box is None:
             return
         if not self.app.remove_box(self.box):
-            self.note.setText("the last box stays")
+            self.note.setText("The last box stays")
 
     def take_control(self):
         """Put the real window on the desktop. Clicking back here parks it again.
@@ -521,6 +521,6 @@ class DetailView:
         if self.box is None:
             return
         if self.app.manager.summon(self.box):
-            self.note.setText("summoned — click here to send it back")
+            self.note.setText("Summoned — click here to send it back")
         else:
-            self.note.setText("no window to summon")
+            self.note.setText("No window to summon")

@@ -35,9 +35,15 @@ CONFIG_PATH = Path(__file__).with_name("config.json")
 # two of the first twelve share a first letter, which is as far as `max_boxes`
 # reaches by default.
 AVIARY = (
+    # The first twenty-two have twenty-two different initials, so a name is
+    # never one glance away from another one.
     "wren", "finch", "swift", "heron", "robin", "kestrel",
     "plover", "egret", "magpie", "tern", "osprey", "curlew",
-    "raven", "snipe", "lark", "crane", "kite", "dove", "hawk", "starling",
+    "jay", "ibis", "avocet", "bittern", "godwit", "quail",
+    "vireo", "nightjar", "dove", "lark",
+    # Past here initials start repeating, which only matters once someone has
+    # raised `max_boxes` well beyond its default of twelve.
+    "raven", "snipe", "crane", "kite", "hawk", "starling", "dunlin", "merlin",
 )
 
 

@@ -713,6 +713,15 @@ def check_geometry():
     check("fits a small space",
           small.right - small.left <= 800 and small.bottom - small.top <= 600,
           f"{small.right - small.left}x{small.bottom - small.top}")
+    from boxes import AVIARY
+    ceiling = load_config().get("max_boxes", 12)
+    check("the aviary covers max_boxes", len(AVIARY) >= ceiling,
+          f"{len(AVIARY)} names, ceiling {ceiling}")
+    check("every bird is unique", len(set(AVIARY)) == len(AVIARY))
+    initials = [name[0] for name in AVIARY[:ceiling]]
+    check("no two of the first max_boxes share an initial",
+          len(set(initials)) == len(initials), "".join(initials))
+
     check("the grid gives up rather than drawing specks",
           layout.tile_rects(240, 160, 12, aspect=1.6) == [])
 
