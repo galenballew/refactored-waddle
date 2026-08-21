@@ -232,6 +232,12 @@ with a correctness constraint worth testing.
   not say "press one, press two"; it says you can call a friend. A line that
   narrates a click is the wrong line, and the reel is two and a half minutes
   because everything that was only *interesting* was cut.
+- **The narration is spoken, so it is written to be spoken.** First person,
+  contractions, full sentences, plain words, and the name of the product said out
+  loud four times. No sentence fragments, no colons setting up a reveal, no lists
+  of three, no em dashes: they read fine and sound like a caption. Each beat's
+  line also has to fit its hold at 150 words a minute with room to spare, because
+  a narrator reading at a sprint is the same failure as a line that is wrong.
 - **The demo clicks for real, because the film is a recording of a cursor.**
   `clicks.py` moves the pointer and presses the button; Windows delivers it to
   the widget under it. An editor tracks that cursor, and a demo that calls
