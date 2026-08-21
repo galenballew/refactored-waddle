@@ -602,12 +602,31 @@ class App:
         """Is the dashboard the window a click would land on right now?
 
         `demo.py` asks before every synthetic click, because a click goes
-        wherever the cursor is and lands on whatever window is under it. Between
-        the take-control beat and the box parking itself, that window is a
-        browser -- and clicking a page instead of a button is a ruined take that
-        still looks nearly right.
+        wherever the cursor is and lands on whatever window is under it.
         """
         return winfocus.foreground_window() == int(self.window.winId())
+
+    def foreground_name(self):
+        """Whoever has the foreground, in enough detail to name them."""
+        return winfocus.describe(winfocus.foreground_window())
+
+    def take_foreground(self):
+        """Put the dashboard back in front. True if Windows agreed.
+
+        A box is a real Chromium window being driven by a real browser, and
+        Chromium takes the foreground when it launches and when it is navigated.
+        Parked past the edge of the virtual screen it does that *invisibly*:
+        nothing on the desktop changes, the dashboard is still the only window
+        anyone can see, and the keyboard and the next click quietly belong to a
+        browser sitting at -30000.
+
+        So the dashboard asks for it back rather than assuming it still has it.
+        This is not stagecraft -- `SetForegroundWindow` on a window that is
+        already the only one on screen changes nothing a camera can see.
+        """
+        hwnd = int(self.window.winId())
+        winfocus.focus_window(hwnd)
+        return winfocus.foreground_window() == hwnd
 
     def centre_of(self, widget):
         """A widget's middle in physical screen pixels, for SetCursorPos."""

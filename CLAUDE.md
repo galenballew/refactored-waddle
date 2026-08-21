@@ -238,6 +238,15 @@ with a correctness constraint worth testing.
   of three, no em dashes: they read fine and sound like a caption. Each beat's
   line also has to fit its hold at 150 words a minute with room to spare, because
   a narrator reading at a sprint is the same failure as a line that is wrong.
+- **Launching a box takes the foreground, invisibly.** Chromium claims the
+  foreground when a window is created, and a box parked past the edge of the
+  virtual screen does that with nothing on the desktop changing: the dashboard is
+  still the only window anyone can see while the keyboard and the next click
+  belong to a browser at -30000. Measured, not assumed -- launching takes it,
+  navigating does not. Anything driving the dashboard with synthetic input has to
+  take the foreground back (`App.take_foreground`) rather than assume it still
+  has it, and `verify.py` check [9] is where that is provable because it is the
+  only check with a real launch in it.
 - **The demo clicks for real, because the film is a recording of a cursor.**
   `clicks.py` moves the pointer and presses the button; Windows delivers it to
   the widget under it. An editor tracks that cursor, and a demo that calls
