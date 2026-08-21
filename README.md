@@ -226,7 +226,7 @@ Edit `config.json`:
 
 ```json
 {
-  "boxes": ["wren", "finch", "swift", "heron", "robin"],
+  "boxes": ["Wren", "Finch", "Swift", "Heron", "Robin"],
   "start_url": "about:blank",
   "window_size": [1440, 900],
   "window_layout": "hidden",
@@ -243,8 +243,8 @@ Edit `config.json`:
 - `boxes` — the window names, in order. **The length of this list is the number of
   windows.** Add or remove entries to get more or fewer. Any names will do; the
   defaults come from an ordered list of birds in `boxes.AVIARY`, and "+ Add box"
-  takes the first one not in use — so closing `finch` and adding another gives
-  you `finch` back rather than shuffling every name along.
+  takes the first one not in use — so closing `Finch` and adding another gives
+  you `Finch` back rather than shuffling every name along.
 - `start_url` — the page every window opens on.
 - `window_size` — `[width, height]` for each browser window, both while parked and
   when summoned onto the screen. This is also the largest anything will ever be

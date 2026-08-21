@@ -186,14 +186,14 @@ def check_task(app, manager):
     check("trajectory came back", len(state.steps) >= 2, f"{len(state.steps)} steps")
     check("the question is in the chat", state.turns[-1].speaker == box.name)
     check("other boxes are untouched",
-          all(app.sessions[n].state == model.IDLE for n in ("wren", "finch")))
+          all(app.sessions[n].state == model.IDLE for n in ("Wren", "Finch")))
 
     app.send(box, "the Team plan")
     settle(app, 6)
     check("answering finishes the task", state.state == model.DONE, state.state)
     body = app.detail.transcript_text()
-    check("both speakers rendered", "you" in body and box.name in body)
-    check("trajectory rendered", "clicked" in app.detail.trajectory_text())
+    check("both speakers rendered", model.USER in body and box.name in body)
+    check("trajectory rendered", "Clicked" in app.detail.trajectory_text())
 
     before = list(state.steps)
     app.send(box, "check the changelog")
@@ -224,7 +224,7 @@ def check_stop(app, manager):
     app.cancel(box)
     settle(app, 2)
     check("stopping returns the box to idle", state.state == model.IDLE, state.state)
-    check("it says so in the chat", state.turns[-1].text == "stopped.")
+    check("it says so in the chat", state.turns[-1].text == "Stopped.")
     check("the trajectory survives the stop", len(state.steps) > before)
 
     steps = len(state.steps)
@@ -589,7 +589,7 @@ def check_model_loop():
     print("\n[13] the model loop, with a fake model")
 
     def build(script):
-        agent = agent_host.ModelAgent("wren", "http://127.0.0.1:1")
+        agent = agent_host.ModelAgent("Wren", "http://127.0.0.1:1")
         agent._client = _Recorder(script)
         agent._page = _FakePage()  # so _connect() short-circuits
         return agent
@@ -601,12 +601,12 @@ def check_model_loop():
     lines = _drive(agent, "open example.com and tell me what it is")
     kinds = lambda kind: [line for line in lines if line.get("type") == kind]
     check("a task runs and finishes",
-          [line["value"] for line in kinds("state")] == ["working", "done"])
+          [line["value"] for line in kinds("state")] == [model.WORKING, model.DONE])
     check("the page was really driven", agent._page.went_to == ["https://example.com"])
     check("what it said reached the chat",
           "It is a shop." in [line["text"] for line in kinds("say")])
     check("what it did reached the trajectory",
-          any("goto" in line["text"] for line in kinds("step")))
+          any("Going to" in line["text"] for line in kinds("step")))
     check("it reports what the task cost",
           any("tokens" in line["text"] for line in kinds("step")))
     first = agent._client.calls[0]
@@ -662,7 +662,7 @@ def check_model_loop():
         return Client()
 
     def _drive_broken(client):
-        agent = agent_host.ModelAgent("wren", "http://127.0.0.1:1")
+        agent = agent_host.ModelAgent("Wren", "http://127.0.0.1:1")
         agent._client = client
         agent._sdk = types.SimpleNamespace(AuthenticationError=_Rejected)
         agent._page = _FakePage()

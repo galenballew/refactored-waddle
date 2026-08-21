@@ -62,7 +62,7 @@ URL_PATTERN = re.compile(
     r"(?:https?://|file:///)\S+|\b[\w-]+(?:\.[\w-]+)+(?:/\S*)?", re.IGNORECASE
 )
 
-ASK_FOR_URL = "which page should I open? give me a URL and I will go and look."
+ASK_FOR_URL = "Which page should I open? Give me a URL and I will go and look."
 
 
 def emit(kind, **fields):
@@ -125,9 +125,9 @@ class Agent:
         if self.state not in (WORKING, NEEDS_INPUT):
             return
         self.queue.clear()
-        self.step("stopped by you")
+        self.step("Stopped by you")
         self.set_state(IDLE)
-        self.say("stopped.")
+        self.say("Stopped.")
 
     # -- the clock ----------------------------------------------------------
 
@@ -197,7 +197,7 @@ class BrowserAgent(Agent):
     # -- the script ---------------------------------------------------------
 
     def start(self, prompt):
-        self.say("on it.")
+        self.say("On it.")
         self.run([lambda: self._plan(prompt)])
 
     def resume(self, answer):
@@ -211,7 +211,7 @@ class BrowserAgent(Agent):
         if url:
             self.queue.extend([lambda: self._goto(url)] + self._look())
         elif page.url and not page.url.startswith("about:"):
-            self.step(f"working with the page already open: {page.url}")
+            self.step(f"Working with the page already open: {page.url}")
             self.queue.extend(self._look())
         else:
             self.set_state(NEEDS_INPUT)
@@ -232,7 +232,7 @@ class BrowserAgent(Agent):
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.connect_over_cdp(self.endpoint)
         self._page = self._existing_page()
-        self.step(f"connected over CDP to {self.endpoint}")
+        self.step(f"Connected over CDP to {self.endpoint}")
         self.report_url()
         return self._page
 
@@ -251,7 +251,7 @@ class BrowserAgent(Agent):
                 return context.pages[0]
         # Nothing open at all. Should not happen -- a box is launched with a page
         # -- so say it rather than silently opening a window nobody can see.
-        self.step("the box had no page open; opening one")
+        self.step("The box had no page open; opening one")
         context = (self._browser.contexts[0] if self._browser.contexts
                    else self._browser.new_context())
         return context.new_page()
@@ -269,9 +269,9 @@ class BrowserAgent(Agent):
             emit("url", value=self._page.url)
 
     def _goto(self, url):
-        self.step(f"goto {url}")
+        self.step(f"Going to {url}")
         self._page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
-        self.step(f"landed on {self._page.url}")
+        self.step(f"Landed on {self._page.url}")
         self.report_url()
 
     def _shoot(self):
@@ -281,19 +281,19 @@ class BrowserAgent(Agent):
         width, height = png_size(data)
         path = Path(tempfile.gettempdir()) / f"aviary-{self.name}.png"
         path.write_bytes(data)
-        self.step(f"screenshot {width}x{height}, {len(data) // 1024} KB")
+        self.step(f"Screenshot {width}x{height}, {len(data) // 1024} KB")
 
     def _describe(self):
         title = (self._page.title() or "").strip()
         links = self._page.locator("a[href]").count()
-        self.step(f'title "{title}"' if title else "the page has no title")
+        self.step(f'Title "{title}"' if title else "The page has no title")
         self.step(f"{links} link{'' if links == 1 else 's'} on the page")
         self._title = title
         self._links = links
 
     def _click_first_link(self):
         if not getattr(self, "_links", 0):
-            self.step("no links to click")
+            self.step("No links to click")
             return
         link = self._page.locator("a[href]").first
         label = (link.text_content() or "").strip().replace("\n", " ")[:40]
@@ -302,16 +302,16 @@ class BrowserAgent(Agent):
         self._page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
         after = self._page.url
         if after == before:
-            self.step(f'clicked "{label}" — the page did not change')
+            self.step(f'Clicked "{label}" — the page did not change')
         else:
-            self.step(f'clicked "{label}" → {after}')
+            self.step(f'Clicked "{label}" → {after}')
             self.report_url()
 
     def _finish(self):
         title = getattr(self, "_title", "")
         where = self._page.url
         self.set_state(DONE)
-        self.say(f'done — "{title}" at {where}' if title else f"done — {where}")
+        self.say(f'Done — "{title}" at {where}' if title else f"Done — {where}")
 
     def close(self):
         if self._playwright is not None:
@@ -509,7 +509,7 @@ class ModelAgent(BrowserAgent):
                 question = (call.input or {}).get("question", "").strip()
                 self._pending_ask = call.id
                 self._pending_results = results
-                self.step("asked you a question")
+                self.step("Asked you a question")
                 self.set_state(NEEDS_INPUT)
                 self.say(question or "I need something from you to carry on.")
                 return
@@ -532,7 +532,7 @@ class ModelAgent(BrowserAgent):
             return {"type": "tool_result", "tool_use_id": call.id, "content": content}
         except Exception as exc:
             detail = str(exc).strip().splitlines()[0][:200] or exc.__class__.__name__
-            self.step(f"{call.name} failed: {detail}")
+            self.step(f"Tool {call.name} failed: {detail}")
             return {
                 "type": "tool_result",
                 "tool_use_id": call.id,
@@ -555,7 +555,7 @@ class ModelAgent(BrowserAgent):
         return f"Error: there is no tool called {name}."
 
     def _read(self, page):
-        self.step("read the page")
+        self.step("Read the page")
         text = (page.inner_text("body") or "").strip()
         clipped = text[:PAGE_TEXT_CHARS]
         links = page.eval_on_selector_all(
@@ -570,7 +570,7 @@ class ModelAgent(BrowserAgent):
     def _click(self, page, text):
         if not text:
             return "Error: click needs the visible text of something to click."
-        self.step(f'clicked "{text}"')
+        self.step(f'Clicked "{text}"')
         before = page.url
         page.get_by_text(text, exact=False).first.click(timeout=CLICK_TIMEOUT_MS)
         page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
@@ -584,7 +584,7 @@ class ModelAgent(BrowserAgent):
         perception path the dashboard's tiles cannot provide: DWM composites
         those on the GPU and never hands Python a pixel."""
         data = page.screenshot(type="jpeg", quality=SHOT_QUALITY)
-        self.step(f"screenshot, {len(data) // 1024} KB")
+        self.step(f"Screenshot, {len(data) // 1024} KB")
         return [{
             "type": "image",
             "source": {
@@ -604,41 +604,41 @@ class StandInAgent(Agent):
 
     pace = STEP_S
 
-    OPENING = "on it."
-    QUESTION = ("before I go further: which plan should I compare against? "
+    OPENING = "On it."
+    QUESTION = ("Before I go further: which plan should I compare against? "
                 "I can only pick one.")
-    ANSWER = "done — the Team plan is $20/month and it is the one marked recommended."
+    ANSWER = "Done — the Team plan is $20/month and it is the one marked recommended."
     FAILURE = "I gave up: the page stopped responding and three retries did not help."
 
     def start(self, prompt):
         self.say(self.OPENING)
         subject = prompt if len(prompt) <= 40 else prompt[:39] + "…"
         actions = [
-            lambda: self.step("opened the start page"),
-            lambda: self.step(f'searched for "{subject}"'),
+            lambda: self.step("Opened the start page"),
+            lambda: self.step(f'Searched for "{subject}"'),
         ]
         if "fail" in prompt.lower():
             actions += [
-                lambda: self.step("clicked the first result"),
-                lambda: self.step("timed out waiting for the page (1/3)"),
-                lambda: self.step("timed out waiting for the page (3/3)"),
+                lambda: self.step("Clicked the first result"),
+                lambda: self.step("Timed out waiting for the page (1/3)"),
+                lambda: self.step("Timed out waiting for the page (3/3)"),
                 lambda: self._finish(FAILED, self.FAILURE),
             ]
         elif self.tasks == 1:
             actions += [self._ask]
         else:
             actions += [
-                lambda: self.step("read the results"),
-                lambda: self.step('clicked "Pricing"'),
+                lambda: self.step("Read the results"),
+                lambda: self.step('Clicked "Pricing"'),
                 lambda: self._finish(DONE, self.ANSWER),
             ]
         self.run(actions)
 
     def resume(self, answer):
         self.run([
-            lambda: self.step(f"noted: {answer}"),
-            lambda: self.step('clicked "Pricing"'),
-            lambda: self.step("read the page"),
+            lambda: self.step(f"Noted: {answer}"),
+            lambda: self.step('Clicked "Pricing"'),
+            lambda: self.step("Read the page"),
             lambda: self._finish(DONE, self.ANSWER),
         ])
 
