@@ -26,10 +26,16 @@ The corollary took a recording to learn. An earlier version drifted the pointer
 across the grid during idle stretches, on the theory that a tracker wants
 something to follow. What that actually looks like on tape is a cursor sliding
 across the screen in a dead straight line at a constant speed for ten seconds --
-not a thing a hand does, and worse than stillness. So there are eight pointer
-moves in the reel and eight presses, each move welded to the press it belongs to:
-half a second of travel, half a second of arrival, then the button. The pointer
-is stationary for about 148 of the film's 152 seconds.
+not a thing a hand does, and worse than stillness. So every move is welded to the press it
+belongs to, the pointer waits beside its next target rather than across the room
+from it, and it is stationary for the great majority of the film.
+
+Turning the drift off did not fix the recording, which ruled out our motion as
+the cause and pointed at the recorder's own smoothing: a filter tuned for a hand,
+fed a move at three times hand speed, is still catching up seconds later. So
+`clicks.glide` is paced by distance now -- about a millisecond per pixel on top
+of a fixed cost, eased in and out -- which puts a 900px move at 1.1 seconds and
+inside what a hand does.
 
 The single exception is **the fan-out**, and it cannot be anything else. Six
 boxes get a task inside three seconds; a person can only type into one box at a

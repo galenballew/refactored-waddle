@@ -28,9 +28,16 @@ that a tracker needs something to follow. Recorded, that reads as a cursor
 sliding across the screen in a dead straight line for ten seconds at a constant
 speed, which is not a thing a hand does and is worse than stillness. So the
 pointer sits where it last clicked, and every move it makes is one gesture
-attached to one press: about half a second of travel, half a second of arrival,
-then the button. Clicks that come in a run keep their run; anything further apart
-is left alone in between.
+attached to one press.
+
+**And every move is paced like a hand**, which is the other half of the same
+problem. Recorders smooth the cursor through a filter tuned for human input, and
+a move faster than a hand leaves that filter still catching up seconds after the
+real pointer has stopped -- which plays back as the same slow straight crawl,
+drawn from our numbers. `clicks.glide` therefore takes longer the further it
+goes, about a millisecond per pixel on top of a fixed cost, and eases in as well
+as out. It also waits beside its next target rather than across the room from
+it, so the last move before a press is short.
 
 The one thing that is not a click is **the fan-out**, and it cannot be. Six boxes
 get a task inside three seconds; a person can only type into one box at a time,
@@ -80,6 +87,7 @@ import clicks
 import session as session_model
 import sites
 import thumbs
+import winfocus
 from agents import Agent
 from boxes import AVIARY, BoxManager, load_config
 from ui.app import App
@@ -88,13 +96,15 @@ from ui.app import App
 
 # How the pointer approaches a control. Between beats it does not move at all --
 # see the note on stillness in the module docstring -- so every move on camera is
-# one gesture: about half a second of travel, then it sits for `SETTLE_S` before
-# the button goes down. Roughly a second from "the mouse started moving" to "the
-# thing was pressed", which is what a hand does.
-GLIDE_MS = 26          # one hop of the pointer on its way to a control
-GLIDE_HOPS = 18
+# one gesture: `clicks.glide` paces it by distance the way a hand is paced, and
+# then it sits for `SETTLE_S` before the button goes down.
 SETTLE_S = 0.5         # arrived, not yet pressed
 KEY_MS = 40            # per character in the chat box
+
+# Where the pointer waits: beside the control it is going to press next, never
+# on it. Up and to the left, so it sits over the dashboard's own background
+# rather than over the next control's neighbour.
+PARK_OFFSET = (-74, -56)
 CLAUDE_CAP_S = 120     # give up waiting on the models rather than record a hang
 
 FLEET = 5              # what config.json launches; one more is added on camera
@@ -243,8 +253,8 @@ class Director:
     def point(self, target):
         """Glide the pointer onto a control, so the next thing has a cause."""
         self.app.flush()
-        for _ in clicks.glide(target, GLIDE_HOPS):
-            yield GLIDE_MS / 1000.0
+        for _ in clicks.glide(target):
+            yield clicks.HOP_S
 
     def ready_to_click(self, label):
         """Make sure the dashboard is the window a click would land on.
@@ -271,6 +281,34 @@ class Director:
         self.note(f"could not take the foreground from {stolen_by}; "
                   f"did not click {label}")
         return False
+
+    def park(self, target, label=""):
+        """Go and wait beside the control that gets pressed next.
+
+        This is the answer to a recorder that re-animates the cursor. Screen
+        recorders with system-level access to the pointer commonly smooth it:
+        they sample its position sparsely and tween between samples, so a real
+        half-second move gets stretched across the whole gap that follows and
+        plays back as a slow, dead-straight crawl. Nothing on this side can stop
+        that, and turning the drift off did not, because the tween was never
+        about our motion -- it was about the *distance* between where the cursor
+        was and where it went next.
+
+        So the film leaves no distance to tween. The pointer travels as
+        follow-through from the press it has just made, waits out the whole hold
+        a few dozen pixels from its next target, and covers that last stretch as
+        the gesture before the click. Whatever the recorder does with a 74-pixel
+        move is not visible; what it did with a 900-pixel one was the problem.
+
+        Beside rather than on, because a button sitting in its hover state for
+        forty-five seconds reads as a stuck cursor.
+        """
+        if target is None:
+            return
+        left, top, width, height = winfocus.virtual_screen()
+        x = min(max(target[0] + PARK_OFFSET[0], left + 2), left + width - 2)
+        y = min(max(target[1] + PARK_OFFSET[1], top + 2), top + height - 2)
+        yield from self.point((x, y))
 
     def click(self, target, label=""):
         """Travel there and press it, for real."""
@@ -435,6 +473,10 @@ def build_script(base, claude=True):
 
         # -- 1. what it is -------------------------------------------------
         d.beat("five live windows, one dashboard")
+        # Before anything is held, put the pointer where it will be needed. Where
+        # it starts is wherever the last person to touch the mouse left it, and
+        # that is the one distance in the film nobody chose.
+        yield from d.park(app.overview.tile_centre(-1), label="add box")
         yield 3.0
         yield 6.0
 
@@ -449,6 +491,10 @@ def build_script(base, claude=True):
             app.take_foreground()
         d.note(f"{len(app.manager.boxes)} boxes: "
                + ", ".join(b.name for b in app.manager.boxes))
+        # Follow-through: the next press is the jump button, and the fan-out is
+        # about to eat forty-five seconds. Travel now, while the cursor is
+        # already moving, and spend that hold still.
+        yield from d.park(app.overview.control_centre("jump"), label="jump")
         yield 3.5
 
         # -- 3. six at once ------------------------------------------------
@@ -458,8 +504,6 @@ def build_script(base, claude=True):
             yield 0.45
         d.send(ASKS[0], ASKS[1])
         yield 1.5
-        # The pointer keeps moving while nobody is driving. Forty seconds of a
-        # parked cursor is dead footage for anything tracking it.
         yield 12.0
         yield d.settled(working, timeout=75.0)
         d.note("counts: " + ", ".join(f"{n} {s}" for s, n
@@ -482,6 +526,8 @@ def build_script(base, claude=True):
         yield from d.type(url[ANSWER])
         yield 0.4
         yield from d.click(app.detail.control_centre("send"), label="send")
+        yield from d.park(app.detail.control_centre("take control"),
+                          label="take control")
         yield d.until(lambda: d.state(d.box("Kestrel")) == session_model.DONE,
                       60.0, "Kestrel finishes")
         yield 3.0
@@ -508,6 +554,7 @@ def build_script(base, claude=True):
         # Not a click: the dashboard is behind a browser window, so a click here
         # would land on the page. This is what clicking the dashboard does.
         app.focus_window()
+        yield from d.park(app.detail.control_centre("back"), label="back")
         yield 2.2
         # Back to the grid before anything else is clicked. Tile coordinates only
         # mean something while the overview is showing -- pressing one from the
@@ -531,11 +578,13 @@ def build_script(base, claude=True):
         for name, key, prompt in MODEL_TASKS:
             d.send(name, prompt.format(url=url[key]))
             yield 0.5
+        yield from d.park(d.tile("Wren"), label="Wren's tile")
         yield 3.0
         yield 5.0
         # One of them up close while the other two work behind it.
         yield from d.open_box("Wren")
         yield 9.0
+        yield from d.park(app.detail.control_centre("back"), label="back")
         yield d.settled(staying, timeout=CLAUDE_CAP_S)
         for name in staying:
             d.note(f"{name} ended {d.state(d.box(name))}")

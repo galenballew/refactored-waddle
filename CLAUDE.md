@@ -251,6 +251,13 @@ with a correctness constraint worth testing.
   `clicks.py` moves the pointer and presses the button; Windows delivers it to
   the widget under it. An editor tracks that cursor, and a demo that calls
   methods produces footage where things happen and nothing moves.
+- **Every pointer move is paced like a hand, and that is not decoration.**
+  Recorders smooth the cursor through a filter built for human input; a move
+  faster than a hand leaves the filter catching up long after the pointer has
+  stopped, and the recording shows a slow straight crawl that was never on
+  screen. `clicks.glide` scales duration with distance (~1ms/px plus a fixed
+  cost) and eases in and out. Anything that teleports the pointer, or moves it
+  at a fixed number of steps regardless of distance, brings the artefact back.
 - **And the pointer is still the rest of the time.** Not a style preference: a
   cursor drifting between controls during a ten-second hold records as a dead
   straight line at a constant speed, which no hand produces and which a
