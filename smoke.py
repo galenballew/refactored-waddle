@@ -890,6 +890,56 @@ def check_director(app, manager):
     check("flushing does not throw", True)
 
 
+def check_pointer(app, manager):
+    """Every point the reel travels to is a control that exists.
+
+    No clicking here -- a synthetic press would land on whatever window is in
+    front of this console. What is checked is the part that actually breaks: a
+    beat aiming at a control that is missing, or at a point that belongs to a
+    view which is not showing, which is a click that does nothing and still looks
+    about right on camera.
+    """
+    print("\n[17] the reel's pointer")
+    import clicks
+
+    app.show_overview()
+    app.update()
+    for name in ("jump",):
+        check(f"overview control {name!r} has a screen point",
+              app.overview.control_centre(name) is not None)
+    add_tile = app.overview.tile_centre(-1)
+    first_tile = app.overview.tile_centre(0)
+    check("the add tile has a point of its own",
+          add_tile is not None and add_tile != first_tile, add_tile)
+
+    app.enter_detail(manager.boxes[0])
+    app.update()
+    points = {}
+    for name in ("back", "input", "send", "stop", "take control", "close box"):
+        points[name] = app.detail.control_centre(name)
+        check(f"detail control {name!r} has a screen point",
+              points[name] is not None)
+    # Two controls answering the same point would send a click to whichever Qt
+    # decides, which is the kind of thing that only shows up in a recording.
+    check("and no two of them are the same point",
+          len(set(points.values())) == len(points), points)
+
+    # The chat box is typed into on the real keyboard and verified afterwards.
+    # This is the fallback that runs when those keystrokes went somewhere else.
+    app.detail.clear_entry()
+    app.detail.type_char("x")
+    check("the view can still type for itself", app.detail.entry_text() == "x",
+          app.detail.entry_text())
+    app.detail.clear_entry()
+    check("and clear the line to start again", app.detail.entry_text() == "")
+
+    check("a glide is a generator of hops, not a jump",
+          len(list(clicks.glide((0, 0), hops=9))) == 9)
+    check("and going nowhere is not an error", list(clicks.glide(None)) == [])
+    app.show_overview()
+    app.update()
+
+
 def check_sites():
     """The pages this repo ships, and both ways a box reaches them.
 
@@ -994,6 +1044,7 @@ def main():
         check_crash(app, manager)
         check_fleet(app, manager)
         check_director(app, manager)
+        check_pointer(app, manager)
         check_shutdown(app)  # quits the app
         check_model_loop()
         check_agent_flag()

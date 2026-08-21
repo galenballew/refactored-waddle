@@ -116,10 +116,11 @@ layout.py     pure geometry — grid rects, the detail viewport, hit testing,
               usually 1, and 2 wastes two thirds of the panel.
 smoke.py      the fast checks: dashboard plus agent children, no browsers
 verify.py     the eleven proof checks
-demo.py       the demo video: the real dashboard and real boxes, driven through
-              a fixed script for the camera. Every beat goes through the same
-              seam a click would, and like the checks it touches no widget.
+demo.py       the demo reel: the real dashboard and real boxes, driven for the
+              camera by the real mouse. Two and a half minutes, eight beats.
               Implements `storyboard.md`; `transcript.md` is read over it
+clicks.py     ctypes/user32: the pointer, the left button and the keyboard.
+              Only `demo.py` uses it, and only for things a hand could do
 narrate.py    `transcript.md` minus everything that is not spoken, into
               `narration.txt`. Generated, because a reading copy edited by hand
               drifts from the transcript
@@ -219,13 +220,28 @@ with a correctness constraint worth testing.
   state. `CARD_INSET` is the whole budget: a heavier frame or an outer glow runs
   into the neighbouring card.
 - **The demo is a storyboard, a script, a narration and a reading copy, in that
-  order.** `storyboard.md` says what the film is, `demo.py` implements it beat
+  order.** `storyboard.md` says what the reel is, `demo.py` implements it beat
   for beat, `transcript.md` is what is said over it, and `narration.txt` is
   generated from the transcript by `narrate.py`. A beat that moves has to move in
   all four, and the last one is the only one that is not written by hand. Every
   beat's word count is inside what a 150-wpm read fits in that beat's hold; the
   check for that is arithmetic, not taste, and `--pace` is the lever if a
   narrator is slower.
+- **The demo is a reel, and the narration says what the product is for.** It does
+  not describe what is on screen -- the screen is doing that. A phone demo does
+  not say "press one, press two"; it says you can call a friend. A line that
+  narrates a click is the wrong line, and the reel is two and a half minutes
+  because everything that was only *interesting* was cut.
+- **The demo clicks for real, because the film is a recording of a cursor.**
+  `clicks.py` moves the pointer and presses the button; Windows delivers it to
+  the widget under it. An editor tracks that cursor, and a demo that calls
+  methods produces footage where things happen and nothing moves. The one
+  exception is the fan-out -- six boxes given work in three seconds is the shot a
+  person cannot perform, which is the entire argument for the app -- and it goes
+  through `App.send`, the same call the chat box makes. Every click is guarded by
+  `App.holds_foreground()`, because a synthetic click lands on whatever window is
+  in front, and the director counts the ones it skipped so a spoiled take says so
+  rather than looking nearly right.
 - **A relative `start_url` is ours and an absolute one is not.** `load_config`
   resolves a path against the repo into a `file://` URL and leaves anything with
   a scheme exactly as configured. It always resolves to a *list* -- `start_urls`

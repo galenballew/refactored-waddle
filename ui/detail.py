@@ -439,6 +439,14 @@ class DetailView:
         self.entry.setFocus()
         self.entry.setText(self.entry.text() + char)
 
+    def clear_entry(self):
+        """Empty the chat box. The demo types on the real keyboard now, and if
+        those keystrokes landed somewhere else it starts the line again rather
+        than appending to half of one."""
+        self.entry.setEnabled(True)
+        self.entry.setFocus()
+        self.entry.setText("")
+
     def viewport_screen_rect(self):
         """The live view in physical screen pixels, for verify.py."""
         return self.app.screen_rect(self.canvas, self.viewport)
