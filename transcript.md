@@ -11,10 +11,22 @@ console as it runs, so a take can be lined up against its own log:
 moves, it moves there first.
 
 **This is a reel, not a walkthrough, and the narration is the main reason.** It
-does not say what is happening on screen -- the screen is already saying that.
-It says what the thing is for. A phone demo does not say "press one, press two,
-press three"; it says you can call a friend. Every line below is checked against
-that: if it describes a click, it is the wrong line.
+does not say what is happening on screen, because the screen is already saying
+that. It says what the thing is for. A phone demo does not say "press one, press
+two, press three"; it says you can call a friend. Every line below is checked
+against that: if it describes a click, it is the wrong line.
+
+**It is written to be spoken, by the person doing the demo.** First person,
+contractions, full sentences, and the plainest words that will carry the idea.
+Read one of these lines out loud and it should sound like somebody talking you
+through what they are doing, not like a caption being read. That rules out most
+of what written copy reaches for: no sentence fragments, no colons setting up a
+reveal, no lists of three, and no em dashes. If a line cannot be said in one
+breath without the reader working out where the emphasis goes, it is too written.
+
+**Say the product's name.** "Aviary" lands four times: at the top, at the end of
+the fan-out, at the end of the model act, and on the way out. A reel where nobody
+ever says the name is an advert for a category.
 
 Times are nominal, at `--pace 1.0`. **The whole thing runs about 2:18 to 3:08**,
 and the range is the model act at the end -- three model loops decide how many
@@ -47,13 +59,13 @@ of pages in this repository.
 
 ---
 
-## Cold open — the launch · 0:00 · ~10s · 23 words
+## Cold open — the launch · 0:00 · ~10s · 20 words
 
 **On screen:** a terminal, `demo.py` running, five Chromium windows appearing and
 immediately leaving the screen, the dashboard opening centred.
 
-> Every browser agent you run needs a window of its own. Run five and your
-> desktop is gone. So they go somewhere else.
+> This is Aviary. I'm running five browsers here, and instead of them covering
+> my desktop, they all sit somewhere off-screen.
 
 ---
 
@@ -62,37 +74,38 @@ immediately leaving the screen, the dashboard opening centred.
 **On screen:** five large tiles, all on the same quiet start page. The pointer
 drifts across the grid, lifting a frame as it passes.
 
-> Five real Chromium windows, running off-screen. This is the only one you keep:
-> somewhere to watch all of them at once.
+> Each tile is one of those browsers, live. I can see what all five are doing
+> without opening a single window.
 
 ---
 
-## one more, on camera · 0:09 · 8s · 19 words
+## one more, on camera · 0:09 · 8s · 18 words
 
 **On screen:** the pointer travels to the add tile and presses it. A window
 launches, parks itself, and the grid reflows to six.
 
-> Need another? Add it whenever. Each one is a full browser with its own profile
-> and its own agent.
+> If I need another one, I just add it. That's a whole new browser with its own
+> agent.
 
 ---
 
-## six tasks, three seconds · 0:16 · 38s · 89 words
+## six tasks, three seconds · 0:16 · 38s · 90 words
 
 **On screen:** six boxes given work inside three seconds, then thirty seconds of
 the grid diverging on its own — tiles going blue, then green, one going red, one
 going amber. The counts move in the header. The pointer wanders the grid.
 Nothing changes position.
 
-> Now the part you cannot do by hand: six jobs, started at once, running in
-> parallel. Nobody is driving them. They work while you do something else.
+> This is what I use it for. I'm giving all six of them something to do
+> at once, then leaving them alone.
 >
-> When one finishes, it says so. When one hits a dead link it fails and tells you
-> why, instead of reporting that it is done. And when one does not have enough to
-> go on, it stops and asks rather than guessing.
+> They're all working in parallel now. When one of them finishes, it tells me.
+> This one hit a link that doesn't exist, so it stopped and said so instead of
+> pretending it worked. And this one didn't have enough to go on, so it's asking
+> me a question.
 >
-> That is the whole idea. You hand work out, and the fleet only interrupts you
-> when it actually needs you.
+> That's the whole point of Aviary. I hand out the work, and they only come back
+> when they need me.
 
 ---
 
@@ -102,21 +115,21 @@ Nothing changes position.
 on the box that asked; a URL is typed into its chat a character at a time and
 sent; the run picks up where it stopped.
 
-> The corner tells you who is waiting. One click and you are in that box's own
-> conversation — answer it the way you would answer a colleague, and it carries
-> on from there. Every box keeps its own thread. Nothing is shared, nothing is
-> broadcast, and nothing is reordered behind your back.
+> That amber button means one of them is waiting on me. I click it and I'm
+> straight into that box's conversation. I answer it the way I'd answer a person,
+> and it picks up where it left off. Every box keeps its own thread, so nothing I
+> say here goes anywhere else.
 
 ---
 
-## take control: the real window, with the keyboard · 1:16 · 10s · 25 words
+## take control: the real window, with the keyboard · 1:16 · 10s · 20 words
 
 **On screen:** Take control, and the real Chromium window arrives on the desktop.
 Ctrl+F opens Chrome's own find bar, `Degraded` is typed into it, matches
 highlight. Escape, and the window goes back to its slot.
 
-> When looking is not enough, take the window. It arrives with the keyboard, you
-> do the part only you can do, and it goes back.
+> Sometimes I need the page myself. I take the window, do what I need to do, and
+> hand it back.
 
 ---
 
@@ -130,7 +143,7 @@ script still driving**. Use it to rehearse; do not narrate it as the real thing.
 
 ---
 
-## three questions no script could answer · 1:27 · 55s · 87 words
+## three questions no script could answer · 1:27 · 55s · 88 words
 
 **On screen:** three questions sent at once; three tiles going to work; then one
 box up close, its trajectory filling with tool calls nobody scripted. The answers
@@ -139,16 +152,16 @@ land in three chats, and the last line of each trajectory is what it cost.
 **Variable length.** The models decide how many turns they need. Hold the last
 sentence until the cost lines appear.
 
-> Everything up to here ran on a script. Same fleet, same windows — now Claude is
-> driving three of them.
+> Everything I've shown you so far was running on a script. Now Claude is driving
+> three of these instead.
 >
-> Real questions, on real pages. Which ticket has been sitting longest. What
-> separates two kinds of hypervisor. What a method does when the file is already
-> there. It reads, it looks, it clicks, it decides what to do next, and it tells
-> you what that cost.
+> I'm asking them things a script could never work out. One is finding which
+> ticket has been open the longest. Another is reading up on two kinds of
+> hypervisor. They read the pages and decide what to do next on their own, and
+> when they're done they tell me what it cost.
 >
-> That is what the dashboard is for. Whatever is behind the window, the way you
-> work with it does not change.
+> And the way I work with them hasn't changed at all. That's what I wanted from
+> Aviary.
 
 ---
 
@@ -156,7 +169,7 @@ sentence until the cost lines appear.
 
 **On screen:** back to the grid, then the app closing.
 
-> Close the dashboard and all of it goes with it. Nothing left running.
+> When I close Aviary, all of it goes with it. Nothing's left running.
 
 ---
 

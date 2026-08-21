@@ -1,19 +1,19 @@
-Every browser agent you run needs a window of its own. Run five and your desktop is gone. So they go somewhere else.
+This is Aviary. I'm running five browsers here, and instead of them covering my desktop, they all sit somewhere off-screen.
 
-Five real Chromium windows, running off-screen. This is the only one you keep: somewhere to watch all of them at once.
+Each tile is one of those browsers, live. I can see what all five are doing without opening a single window.
 
-Need another? Add it whenever. Each one is a full browser with its own profile and its own agent.
+If I need another one, I just add it. That's a whole new browser with its own agent.
 
-Now the part you cannot do by hand: six jobs, started at once, running in parallel. Nobody is driving them. They work while you do something else.
-When one finishes, it says so. When one hits a dead link it fails and tells you why, instead of reporting that it is done. And when one does not have enough to go on, it stops and asks rather than guessing.
-That is the whole idea. You hand work out, and the fleet only interrupts you when it actually needs you.
+This is what I use it for. I'm giving all six of them something to do at once, then leaving them alone.
+They're all working in parallel now. When one of them finishes, it tells me. This one hit a link that doesn't exist, so it stopped and said so instead of pretending it worked. And this one didn't have enough to go on, so it's asking me a question.
+That's the whole point of Aviary. I hand out the work, and they only come back when they need me.
 
-The corner tells you who is waiting. One click and you are in that box's own conversation — answer it the way you would answer a colleague, and it carries on from there. Every box keeps its own thread. Nothing is shared, nothing is broadcast, and nothing is reordered behind your back.
+That amber button means one of them is waiting on me. I click it and I'm straight into that box's conversation. I answer it the way I'd answer a person, and it picks up where it left off. Every box keeps its own thread, so nothing I say here goes anywhere else.
 
-When looking is not enough, take the window. It arrives with the keyboard, you do the part only you can do, and it goes back.
+Sometimes I need the page myself. I take the window, do what I need to do, and hand it back.
 
-Everything up to here ran on a script. Same fleet, same windows — now Claude is driving three of them.
-Real questions, on real pages. Which ticket has been sitting longest. What separates two kinds of hypervisor. What a method does when the file is already there. It reads, it looks, it clicks, it decides what to do next, and it tells you what that cost.
-That is what the dashboard is for. Whatever is behind the window, the way you work with it does not change.
+Everything I've shown you so far was running on a script. Now Claude is driving three of these instead.
+I'm asking them things a script could never work out. One is finding which ticket has been open the longest. Another is reading up on two kinds of hypervisor. They read the pages and decide what to do next on their own, and when they're done they tell me what it cost.
+And the way I work with them hasn't changed at all. That's what I wanted from Aviary.
 
-Close the dashboard and all of it goes with it. Nothing left running.
+When I close Aviary, all of it goes with it. Nothing's left running.

@@ -31,10 +31,17 @@ cannot be performed by hand. It goes through `App.send`, the same call the chat
 box makes. Nothing else in the film is cast that way, and the docstring says so
 where it happens.
 
-**2. The narration says what it is for, not what is happening.** The screen is
-already showing what is happening. A phone demo does not say "press one, press
-two, press three"; it says you can call a friend. Every line in `transcript.md`
-is checked against that, and `narration.txt` is generated from it.
+**2. The narration is one person talking, and it says what the thing is for.**
+The screen is already showing what is happening. A phone demo does not say "press
+one, press two, press three"; it says you can call a friend.
+
+It is also written to be said out loud by whoever is doing the demo, which rules
+out most of what written copy reaches for: first person, contractions, full
+sentences, plain words, and none of the sentence fragments, colon reveals, lists
+of three or em dashes that read fine on a page and sound like a caption when
+spoken. And it says "Aviary" four times, because a reel where nobody says the
+name is an advert for a category. Every line in `transcript.md` is checked
+against that, and `narration.txt` is generated from it.
 
 **3. Nothing is faked.** Every state is reported by the child that earned it. The
 failed tile is a real 404 from this repo's own server; the box that asks is one
