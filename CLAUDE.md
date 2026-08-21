@@ -251,6 +251,17 @@ with a correctness constraint worth testing.
   `clicks.py` moves the pointer and presses the button; Windows delivers it to
   the widget under it. An editor tracks that cursor, and a demo that calls
   methods produces footage where things happen and nothing moves.
+- **The pointer is moved by injecting input, never by `SetCursorPos`.** Both
+  move the cursor and both look identical on screen -- Qt gets its enter and
+  leave events either way. Only one of them goes through the input queue, and a
+  low-level mouse hook is fed from that queue. Screen recorders track the cursor
+  with such a hook, so a `SetCursorPos` move is invisible to them: they get no
+  samples between our clicks and draw the pointer sliding straight from one click
+  to the next across the whole gap. Recorded with no clicks at all, the cursor
+  never moves once. `clicks.move` posts
+  `MOUSEEVENTF_MOVE | ABSOLUTE | VIRTUALDESK` instead, which lands within a pixel
+  or two -- fine for controls that are tens of pixels across, and the reason a
+  final exactness correction is not worth having.
 - **Every pointer move is paced like a hand, and that is not decoration.**
   Recorders smooth the cursor through a filter built for human input; a move
   faster than a hand leaves the filter catching up long after the pointer has

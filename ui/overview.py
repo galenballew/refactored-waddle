@@ -578,7 +578,7 @@ class OverviewView:
 
     def tile_centre(self, index):
         """Screen centre of tile `index`; -1 is the add tile. Physical pixels,
-        because the only caller drives the real cursor with SetCursorPos."""
+        because the only caller drives the real cursor with injected input."""
         if not self.tiles:
             return None
         tile = self.tiles[index]

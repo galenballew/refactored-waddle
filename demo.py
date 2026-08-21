@@ -30,14 +30,14 @@ speed, which is not a thing a hand does and is worse than stillness. So the
 pointer sits where it last clicked, and every move it makes is one gesture
 attached to one press.
 
-**And every move is paced like a hand**, which is the other half of the same
-problem. Recorders smooth the cursor through a filter tuned for human input, and
-a move faster than a hand leaves that filter still catching up seconds after the
-real pointer has stopped -- which plays back as the same slow straight crawl,
-drawn from our numbers. `clicks.glide` therefore takes longer the further it
-goes, about a millisecond per pixel on top of a fixed cost, and eases in as well
-as out. It also waits beside its next target rather than across the room from
-it, so the last move before a press is short.
+**And the moves are injected input, not `SetCursorPos`**, which is what actually
+makes them appear in a recording at all. A recorder tracks the cursor with a
+low-level mouse hook, and `SetCursorPos` does not go through the input queue that
+feeds one: it moved the pointer on screen while the recording saw nothing between
+our clicks and drew a straight slide from one to the next. `clicks.move` posts
+real input now. The moves are also paced by distance the way a hand is paced, and
+the pointer waits beside its next target rather than across the room from it, so
+the last move before a press is short.
 
 The one thing that is not a click is **the fan-out**, and it cannot be. Six boxes
 get a task inside three seconds; a person can only type into one box at a time,

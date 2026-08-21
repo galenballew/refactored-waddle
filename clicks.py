@@ -28,8 +28,16 @@ import time
 
 user32 = ctypes.windll.user32
 
+MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_VIRTUALDESK = 0x4000
+MOUSEEVENTF_ABSOLUTE = 0x8000
+
+SM_XVIRTUALSCREEN = 76
+SM_YVIRTUALSCREEN = 77
+SM_CXVIRTUALSCREEN = 78
+SM_CYVIRTUALSCREEN = 79
 
 VK_SHIFT = 0x10
 VK_CONTROL = 0x11
@@ -76,7 +84,41 @@ def where():
 
 
 def move(x, y):
-    user32.SetCursorPos(int(x), int(y))
+    """Put the pointer at `x, y` by *injecting input*, not by setting it.
+
+    This is the whole difference between a recording that shows the cursor moving
+    and one that does not, and it took a strange symptom to find.
+
+    `SetCursorPos` moves the pointer, and everything on screen agrees it moved --
+    Qt gets its enter and leave events, hover states light up, a person watching
+    sees a mouse move. What it does *not* do is go through the input queue. A
+    low-level mouse hook (`WH_MOUSE_LL`) is fed from that queue, and a hook is how
+    screen recorders track the cursor, so a `SetCursorPos` move is invisible to
+    them: no samples, no path.
+
+    What they do see is our clicks, because `mouse_event` posts real input. So a
+    recorder watching the old code got exactly one cursor sample per click and
+    drew the pointer sliding in a straight line from one click to the next across
+    the whole gap between them -- a crawl that was never on screen. Run the same
+    code with no clicks in it at all and the recorded cursor never moves once,
+    which is the observation that gave this away.
+
+    `mouse_event` with `MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE` posts a move the
+    hook can see. Absolute rather than relative, so the pointer lands where it was
+    asked rather than somewhere pointer acceleration decided, and `VIRTUALDESK`
+    so the coordinate space is every monitor rather than the primary one.
+    Coordinates are normalised to 0-65535 across that space, which is finer than
+    a pixel on any display this will ever run on.
+    """
+    left = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+    top = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+    width = max(1, user32.GetSystemMetrics(SM_CXVIRTUALSCREEN) - 1)
+    height = max(1, user32.GetSystemMetrics(SM_CYVIRTUALSCREEN) - 1)
+    user32.mouse_event(
+        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+        int(round((int(x) - left) * 65535 / width)),
+        int(round((int(y) - top) * 65535 / height)),
+        0, 0)
 
 
 def travel_time(distance):
