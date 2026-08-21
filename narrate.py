@@ -4,17 +4,16 @@
     .venv\\Scripts\\python.exe narrate.py --check   # is it current? (smoke asks this)
 
 `transcript.md` is a working document -- beat names, screen directions, word
-budgets, and the two branches for how the model act might end. None of that can
-be in front of someone reading the voiceover, because anything in the file is a
-candidate for being read aloud. So the reading copy is a separate file, and it is
-generated rather than maintained: a narration edited by hand drifts from the
-transcript, and the transcript is where a line belongs.
+budgets, and notes about what not to say. None of that can be in front of someone
+reading the voiceover, because anything in the file is a candidate for being read
+aloud. So the reading copy is a separate file, and it is generated rather than
+maintained: a narration edited by hand drifts from the transcript, and the
+transcript is where a line belongs.
 
-Two things are deliberately dropped. Backticks, because `needs input` is two
-words when it is said. And the conditional alternates at the end -- what to say
-if a box ends `needs input` or `failed` -- because they are branches, not lines
-in the read, and dropping them into the flow would have the narrator say both.
-They stay in `transcript.md`, where whoever is directing can see them.
+Two things shape the output. Backticks go, because `needs input` is two words
+when it is said. And the paragraph breaks inside a beat are kept as single line
+breaks while beats are separated by a blank line -- so a narrator can see where
+to breathe within a beat, and where a new shot starts.
 """
 
 import sys
@@ -23,27 +22,37 @@ from pathlib import Path
 TRANSCRIPT = Path(__file__).with_name("transcript.md")
 NARRATION = Path(__file__).with_name("narration.txt")
 
-# The alternates. Matched on their opening words rather than by position, so
-# adding a beat above them does not silently start including them.
-BRANCHES = (
-    "That one stopped to ask a question of its own.",
-    "That one failed, and it says why.",
-)
-
 
 def spoken(markdown):
-    """Every blockquote in the file, in order, one paragraph each."""
-    paragraphs, current = [], []
-    for line in markdown.splitlines():
-        if line.startswith(">"):
-            current.append(line[1:].strip())
-        elif current:
-            paragraphs.append(" ".join(current).strip())
-            current = []
-    if current:
-        paragraphs.append(" ".join(current).strip())
-    paragraphs = [p for p in paragraphs if not p.startswith(BRANCHES)]
-    return "\n\n".join(p.replace("`", "") for p in paragraphs) + "\n"
+    """Every blockquote in the file, in order.
+
+    A blockquote is one beat. A bare `>` inside one is a breath: it stays as a
+    line break. Anything that is not a blockquote is direction, and is dropped.
+    """
+    beats, lines, current = [], [], []
+
+    def end_line():
+        if current:
+            lines.append(" ".join(current).strip())
+            current.clear()
+
+    def end_beat():
+        end_line()
+        if lines:
+            beats.append("\n".join(lines))
+            lines.clear()
+
+    for raw in markdown.splitlines():
+        if raw.startswith(">"):
+            body = raw[1:].strip()
+            if body:
+                current.append(body)
+            else:
+                end_line()
+        else:
+            end_beat()
+    end_beat()
+    return "\n\n".join(beat.replace("`", "") for beat in beats) + "\n"
 
 
 def main(argv):
@@ -56,8 +65,9 @@ def main(argv):
         return 1
     NARRATION.write_text(wanted, encoding="utf-8")
     words = len(wanted.split())
-    print(f"narration.txt: {len(wanted.splitlines()) // 2 + 1} paragraphs, "
-          f"{words} words, about {words / 150:.1f} minutes at 150 wpm")
+    beats = wanted.count("\n\n") + 1
+    print(f"narration.txt: {beats} beats, {words} words, "
+          f"about {words / 150:.1f} minutes at 150 wpm")
     return 0
 
 

@@ -1,35 +1,19 @@
-Three Chromium windows just started. They are already off the desktop — no taskbar buttons, no Alt-Tab entries. This dashboard is the only window you will ever see.
+Every browser agent you run needs a window of its own. Run five and your desktop is gone. So they go somewhere else.
 
-Each tile is a live view of one of those windows. Not a screenshot — the real window, updating while it sits off-screen.
+Five real Chromium windows, running off-screen. This is the only one you keep: somewhere to watch all of them at once.
 
-One of them gets a page to read. The other two get tasks that name no page at all, and neither window has been anywhere yet — so rather than guess, both stop and ask. That is needs input, one of the two states worth looking for.
+Need another? Add it whenever. Each one is a full browser with its own profile and its own agent.
 
-The button counts whoever is waiting, and wears their colour. It swelled twice when it lit and then stopped — a thing that pulses forever is a colour you learn to ignore. Answer in the box's own chat and it carries on.
+Now the part you cannot do by hand: six jobs, started at once, running in parallel. Nobody is driving them. They work while you do something else.
+When one finishes, it says so. When one hits a dead link it fails and tells you why, instead of reporting that it is done. And when one does not have enough to go on, it stops and asks rather than guessing.
+That is the whole idea. You hand work out, and the fleet only interrupts you when it actually needs you.
 
-Still lit, because somebody is still waiting. It is a queue, not a notification: it points at the next one and it does not decide which one matters. Nothing here ranks, scores or reorders anything.
+The corner tells you who is waiting. One click and you are in that box's own conversation — answer it the way you would answer a colleague, and it carries on from there. Every box keeps its own thread. Nothing is shared, nothing is broadcast, and nothing is reordered behind your back.
 
-The fleet is not a fixed size. Each one launches, parks itself off the desktop, and gets a tile, an agent process and a conversation like everything else. The dashboard stops answering while Chromium starts. The tiles do not — Windows composites those.
+When looking is not enough, take the window. It arrives with the keyboard, you do the part only you can do, and it goes back.
 
-Four get work at once. Two on our own pages, two on the real internet, and nothing here knows the difference.
+Everything up to here ran on a script. Same fleet, same windows — now Claude is driving three of them.
+Real questions, on real pages. Which ticket has been sitting longest. What separates two kinds of hypervisor. What a method does when the file is already there. It reads, it looks, it clicks, it decides what to do next, and it tells you what that cost.
+That is what the dashboard is for. Whatever is behind the window, the way you work with it does not change.
 
-Now nobody is driving. Eight windows, nowhere on your screen, on their own clocks. One was sent to a link that does not exist — it got a 404, and it says so rather than claiming it finished. One stopped to ask. The tile that failed is still exactly where it was. Nothing here reorders itself.
-
-Double-click a tile to get that box on its own. The same mirror, bigger. On the right, the trajectory: every page it opened, every screenshot, every link it clicked.
-
-While a box is working the input is disabled: a message that vanishes is worse than a box you cannot type into. Stop interrupts it between steps, and the trajectory stays.
-
-The mirror cannot be clicked into. Take control brings the real window out and gives it the keyboard. That is Chrome's own find bar answering.
-
-Look back at the dashboard and it parks itself, still updating.
-
-Close box is the other direction, and it is final: the window, the agent process and the conversation go together. Nothing is written back to the config file, so a restart is five boxes again.
-
-Everything so far ran on a script. Now five of these boxes get a Claude loop instead — same seam, different thing behind it.
-
-Five questions at once. Which service is degraded and for how long. Which team owns the oldest unassigned P1 — that one is on two pages. And three more, on the real internet.
-
-It chooses what to do and in what order, and this one needs two pages to answer at all. No script could do that.
-
-Five answers, from five pages that none of us read. The last line of each trajectory is what it cost — turns, tokens in, tokens out. Twelve turns and a box gives up and says so. A loop that will not converge is a bill.
-
-Close the dashboard and every window goes with it — every agent process, every conversation, every profile.
+Close the dashboard and all of it goes with it. Nothing left running.

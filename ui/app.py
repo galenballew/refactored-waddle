@@ -598,6 +598,17 @@ class App:
         self.window.activateWindow()
         self.window.raise_()
 
+    def holds_foreground(self):
+        """Is the dashboard the window a click would land on right now?
+
+        `demo.py` asks before every synthetic click, because a click goes
+        wherever the cursor is and lands on whatever window is under it. Between
+        the take-control beat and the box parking itself, that window is a
+        browser -- and clicking a page instead of a button is a ruined take that
+        still looks nearly right.
+        """
+        return winfocus.foreground_window() == int(self.window.winId())
+
     def centre_of(self, widget):
         """A widget's middle in physical screen pixels, for SetCursorPos."""
         left, top, width, height = self.screen_rect(
