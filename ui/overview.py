@@ -25,6 +25,10 @@ from .text import clip, short_url
 
 LABEL_PAD = 12   # caption strip padding, above and below the text
 PAD = 14
+TITLE_GAP = 12       # between the title and the hint
+COUNTS_GAP = 14      # between the counts and the jump button
+COUNT_GAP = 12       # between one state count and the next
+MIN_HEADER_GAP = 24  # the gap the hint may never be squeezed below
 
 
 class TileCanvas(QWidget):
@@ -101,13 +105,13 @@ class OverviewView:
         outer.setSpacing(4)
 
         header = QHBoxLayout()
-        title = QLabel("multibox")
-        title.setObjectName("head")
-        hint = QLabel("double-click a box to open it")
-        hint.setObjectName("muted")
-        header.addWidget(title)
+        self.title = QLabel("multibox")
+        self.title.setObjectName("head")
+        self.hint = QLabel("double-click a box to open it")
+        self.hint.setObjectName("muted")
+        header.addWidget(self.title)
         header.addSpacing(12)
-        header.addWidget(hint)
+        header.addWidget(self.hint)
         header.addStretch(1)
 
         # One label per state rather than one string, so each count is in its own
@@ -150,6 +154,25 @@ class OverviewView:
         # Leaving by double-click means the pointer never crosses a tile edge on
         # the way out, so nothing else would ever put this tile down.
         self.hover(None, None)
+
+    def _fit_header(self):
+        """Drop the hint when the header cannot hold everything.
+
+        The stretch between the hint and the counts is the first thing to
+        collapse in a narrow window, and nothing stops the two texts touching
+        once it has -- which reads as a rendering fault rather than as a tight
+        window. The hint is the only decoration up there; the counts and the
+        jump button both carry information, so the hint is what goes.
+        """
+        counts = sum(label.sizeHint().width()
+                     for label in self.counts.values() if label.isVisible())
+        counts += COUNT_GAP * max(0, sum(
+            1 for label in self.counts.values() if label.isVisible()) - 1)
+        needed = (self.title.sizeHint().width() + counts
+                  + self.jump.sizeHint().width() + TITLE_GAP + COUNTS_GAP
+                  + MIN_HEADER_GAP)
+        room = self.frame.width() - 2 * PAD - needed
+        self.hint.setVisible(room >= self.hint.sizeHint().width())
 
     def relayout(self):
         # One cell past the fleet: the last tile is "+ Add box", laid out with
@@ -202,10 +225,12 @@ class OverviewView:
         if not waiting:
             self.jump.setText("nothing needs you")
             self.jump.setEnabled(False)
+            self._fit_header()
             return
         extra = f"  (+{len(waiting) - 1} more)" if len(waiting) > 1 else ""
         self.jump.setText(f"go to {waiting[0].name}{extra}  →")
         self.jump.setEnabled(True)
+        self._fit_header()
 
     def go_to_waiting(self):
         waiting = self.app.waiting()
@@ -223,12 +248,13 @@ class OverviewView:
         self._paint_add_tile(painter, self.tiles[-1])
         for tile, box in zip(self.tiles, boxes):
             mover = self.app.motion_of(box)
-            self._paint_card(painter, tile, mover)
-            if tile.index in self._empty:
+            empty = tile.index in self._empty
+            self._paint_card(painter, tile, mover, empty)
+            if empty:
                 self._paint_empty(painter, tile)
             self._paint_caption(painter, tile, box, mover)
 
-    def _paint_card(self, painter, tile, mover):
+    def _paint_card(self, painter, tile, mover, empty=False):
         """The frame a tile sits in.
 
         Drawn on the CELL grown by a few pixels, so every edge of it falls
@@ -253,37 +279,48 @@ class OverviewView:
         hover = mover.hover.get()
         painter.setBrush(theme.mix(theme.PANEL, theme.HOVER_PANEL, hover))
 
-        colour, width = self._frame_pen(mover)
+        colour, width = self._frame_pen(mover, empty)
         painter.setPen(QPen(colour, width))
         painter.drawRoundedRect(rect, theme.RADIUS, theme.RADIUS)
 
     @staticmethod
-    def _frame_pen(mover):
+    def _frame_pen(mover, empty=False):
         """What colour and how heavy this tile's frame is this frame.
 
         Idle is a plain edge rather than a state colour, so the weight has to
         crossfade along with the hue -- otherwise a box leaving idle snaps from
         1px to 2px in the middle of an otherwise smooth transition and the whole
         effect reads as a glitch.
+
+        A box with no window makes no claim about its agent at all. Its session
+        may well say `done`, and that is true, but a green frame wrapped around
+        a red "no window" panel says finished and broken in the same breath. So
+        the frame goes neutral and lets the panel do the talking -- and the
+        attention swell goes with it, since that is a claim about state too.
+        The caption underneath still reports the state in words, which is where
+        someone can read it without being told two things at once.
         """
         def pen_for(state):
             if state == session.IDLE:
                 return theme.qcolour(theme.EDGE_BRIGHT), 1.0
             return theme.state_qcolour(state), 2.0
 
-        was_colour, was_width = pen_for(mover.previous)
-        now_colour, now_width = pen_for(mover.state)
-        blend = mover.blend.get()
-        colour = theme.mix(was_colour, now_colour, blend)
-        width = was_width + (now_width - was_width) * blend
+        if empty:
+            colour, width = theme.qcolour(theme.EDGE_BRIGHT), 1.0
+        else:
+            was_colour, was_width = pen_for(mover.previous)
+            now_colour, now_width = pen_for(mover.state)
+            blend = mover.blend.get()
+            colour = theme.mix(was_colour, now_colour, blend)
+            width = was_width + (now_width - was_width) * blend
 
-        # A swell brightens and thickens the colour the tile already has, rather
-        # than introducing one of its own: the state vocabulary stays five
-        # colours, and the movement is what carries the interruption.
-        attention = mover.attention.get()
-        if attention:
-            colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
-            width += 1.6 * attention
+            # A swell brightens and thickens the colour the tile already has,
+            # rather than introducing one of its own: the state vocabulary stays
+            # five colours, and the movement is what carries the interruption.
+            attention = mover.attention.get()
+            if attention:
+                colour = theme.mix(colour, theme.TEXT, 0.45 * attention)
+                width += 1.6 * attention
 
         # Hover lifts whatever is already there. Never toward the accent: that
         # is reserved for things you can act on, and every tile is one, so
