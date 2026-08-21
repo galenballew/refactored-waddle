@@ -6,13 +6,18 @@ import thumbs
 from boxes import BoxManager, load_config
 from ui.app import App
 
-AGENTS = ("script", "claude")
+AGENTS = ("script", "demo", "claude")
 
-USAGE = """usage: main.py [--agent script|claude]
+USAGE = """usage: main.py [--agent script|demo|claude]
 
   script   (default) every box is driven by a fixed script: it opens pages,
            reads them, screenshots them and clicks links, and nothing calls a
            model.
+  demo     the same script, paced for a camera: each box moves at its own
+           speed, the trajectory is longer, a page that answers 404 is a
+           failure rather than a page, and the link it clicks is the first one
+           in the body rather than the first in the markup. What `demo.py`
+           runs. Nothing calls a model here either.
   claude   every box is driven by Claude instead. Needs ANTHROPIC_API_KEY in the
            environment and the anthropic package installed, and spends money on
            your account once per task.

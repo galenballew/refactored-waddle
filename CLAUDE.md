@@ -99,9 +99,10 @@ ui/           only package that touches Qt
   text.py     URL captions. `clip` takes a measuring function, not a font,
               so nothing here knows which toolkit is drawing
 sites/        the pages this repo ships. `start.html` is what a new box opens
-              on -- it reads `?box=Wren` and says so in type big enough to
-              survive a tile. `pinion/` is an invented company's internal tools,
-              for the demo: pages whose content does not move between takes
+              on, and it deliberately says nothing about Aviary: a page inside a
+              window describing the app drawing the window reads as strange as
+              it sounds. `pinion/` is an invented company's internal tools, for
+              the demo: pages whose content does not move between takes
 sites.py      resolving a bundled page to a `file://` URL, and serving one over
               local HTTP for the demo, because the address bar is on camera.
               The server's thread is the only one in the repo and touches
@@ -117,7 +118,11 @@ smoke.py      the fast checks: dashboard plus agent children, no browsers
 verify.py     the eleven proof checks
 demo.py       the demo video: the real dashboard and real boxes, driven through
               a fixed script for the camera. Every beat goes through the same
-              seam a click would, and like the checks it touches no widget
+              seam a click would, and like the checks it touches no widget.
+              Implements `storyboard.md`; `transcript.md` is read over it
+narrate.py    `transcript.md` minus everything that is not spoken, into
+              `narration.txt`. Generated, because a reading copy edited by hand
+              drifts from the transcript
 ```
 
 Panel geometry inside a view is Qt's layouts, not `layout.py`. Only rectangles a
@@ -213,11 +218,26 @@ with a correctness constraint worth testing.
   live view of the box being pointed at, which is worse than having no hover
   state. `CARD_INSET` is the whole budget: a heavier frame or an outer glow runs
   into the neighbouring card.
+- **The demo is a storyboard, a script, a narration and a reading copy, in that
+  order.** `storyboard.md` says what the film is, `demo.py` implements it beat
+  for beat, `transcript.md` is what is said over it, and `narration.txt` is
+  generated from the transcript by `narrate.py`. A beat that moves has to move in
+  all four, and the last one is the only one that is not written by hand. Every
+  beat's word count is inside what a 150-wpm read fits in that beat's hold; the
+  check for that is arithmetic, not taste, and `--pace` is the lever if a
+  narrator is slower.
 - **A relative `start_url` is ours and an absolute one is not.** `load_config`
-  resolves a path against the repo into a `file://` URL and sets
-  `bundled_start`; that flag is the only thing that lets `?box=<name>` be
-  appended, because adding a query string to a URL somebody else configured is
-  not ours to do. The demo overrides both with its local HTTP server.
+  resolves a path against the repo into a `file://` URL and leaves anything with
+  a scheme exactly as configured. It always resolves to a *list* -- `start_urls`
+  -- so one entry means the fleet opens one page and several mean one page per
+  box, taken by position and wrapped around. The demo overrides it with its
+  local HTTP server.
+- **A box only asks when it has nothing at all to work with.** A task naming no
+  URL uses the page the box already has; only a box that has never navigated --
+  blank, or still on the start page -- comes back and asks. `needs input` is
+  therefore a state a box can produce *once*, and any script that wants it on
+  camera has to spend a fresh box on it. Getting this wrong is silent: the box
+  reports `done` about the wrong page instead of asking.
 - **The jump button is the only loud control, and only while it is armed.** It
   wears the `needs input` colour rather than the accent -- it counts boxes in
   that state, and the tiles it points at are already that colour. It swells on

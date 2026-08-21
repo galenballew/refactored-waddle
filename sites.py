@@ -29,10 +29,10 @@ and that caller is `demo.py`.
 import socket
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from threading import Thread
-from urllib.parse import quote
-from urllib.request import pathname2url
+from urllib.parse import unquote, urlparse
+from urllib.request import pathname2url, url2pathname
 
 # Relative `start_url` values in `config.json` are resolved against the repo, so
 # the config reads `sites/start.html` rather than a bare filename -- one look
@@ -62,18 +62,53 @@ def resolve(value, root=ROOT):
     return "file:" + pathname2url(str(path))
 
 
-def for_box(url, name):
-    """The same page, told which box it is showing.
+def resolve_all(value, root=ROOT):
+    """`start_url` as a list, however it was written.
 
-    Eight tiles of one start page are one picture repeated; eight tiles of one
-    start page that each say their own bird's name are eight. Only ever called
-    for a page of ours -- `config['bundled_start']` says so -- because appending
-    a query to a URL somebody else configured is not ours to do.
+    One string is a fleet that all opens the same page; a list is one page per
+    box, taken in turn and wrapped around, so a grid of fresh boxes can be a grid
+    of different things rather than the same picture repeated. Whichever it is,
+    the answer is a list, and `BoxManager` indexes it by the box's position.
     """
-    if not url or not name:
-        return url
-    joiner = "&" if "?" in url else "?"
-    return f"{url}{joiner}box={quote(name)}"
+    if isinstance(value, (list, tuple)):
+        return [resolve(item, root) for item in value if str(item).strip()]
+    single = resolve(value, root)
+    return [single] if single else []
+
+
+def start_page_for(urls, index):
+    """The page the box at `index` opens on, or "" if there are none."""
+    return urls[index % len(urls)] if urls else ""
+
+
+def is_start_page(url):
+    """Is a box still sitting on the page it was launched with?
+
+    Asked by the agent child, not by the dashboard, and that is the point: a box
+    on its start page has no page to work with, exactly like a box on
+    `about:blank` did before there was a start page. Without this a task that
+    names no URL would quietly start reading the start page instead of stopping
+    to ask -- which is the difference between an agent that knows what it does
+    not know and one that answers about the wrong thing.
+
+    Both ends import this rather than either end knowing the filename, the same
+    way both ends import the state words from `session.py`.
+    """
+    parts = urlparse(url or "")
+    wanted = PurePosixPath(START_PAGE).name
+    if PurePosixPath(unquote(parts.path)).name != wanted:
+        return False
+    if parts.scheme == "file":
+        here = Path(url2pathname(unquote(parts.path)))
+        return here.resolve() == (ROOT / START_PAGE).resolve()
+    # Served by `serve()` during the demo, and only ever on this machine.
+    return parts.hostname in ("127.0.0.1", "localhost")
+
+
+def nothing_to_work_with(url):
+    """A box with no page a task could be about: blank, or still on its start
+    page. The child asks this before deciding it has to come back and ask."""
+    return not url or url.startswith("about:") or is_start_page(url)
 
 
 class _Handler(SimpleHTTPRequestHandler):
@@ -130,8 +165,6 @@ def reachable(url, timeout=4.0):
     Here rather than in `demo.py` because it is a question about a site, and the
     demo asks it of both the local server and the real ones.
     """
-    from urllib.parse import urlparse
-
     parts = urlparse(url)
     if parts.scheme not in ("http", "https"):
         return True

@@ -737,6 +737,8 @@ def check_agent_flag():
           agent_from(["main.py", "--agent", "claude"]) == "claude")
     check("--agent script is still allowed",
           agent_from(["main.py", "--agent", "script"]) == "script")
+    check("--agent demo is what demo.py runs",
+          agent_from(["main.py", "--agent", "demo"]) == "demo")
     for bad in (["main.py", "--agent", "gpt"], ["main.py", "--agent"]):
         try:
             agent_from(bad)
@@ -744,6 +746,30 @@ def check_agent_flag():
         except SystemExit:
             check(f"{' '.join(bad[1:]) or 'a missing value'} is refused", True)
     check("the config file cannot turn it on", "agent" not in load_config())
+
+    # Which class each kind actually builds. The flag above only picks a word;
+    # this is the child deciding what to be, and it is the part that matters.
+    made = {kind: type(agent_host.build(
+        ["agent_host.py", "Wren", "--cdp", "http://127.0.0.1:1", "--agent", kind]
+    )).__name__ for kind in ("script", "demo", "claude")}
+    check("script builds the fixed script", made["script"] == "BrowserAgent", made)
+    check("demo builds the paced one", made["demo"] == "DemoAgent", made)
+    check("claude builds the model loop", made["claude"] == "ModelAgent", made)
+    check("no endpoint means no browser, whatever was asked for",
+          type(agent_host.build(["agent_host.py", "Wren", "--agent", "demo"])
+               ).__name__ == "StandInAgent")
+
+    # Eight boxes stepping in lockstep read as one animation. Deterministic,
+    # because two takes of the same script have to be the same film.
+    paces = {name: agent_host.DemoAgent(name, "http://x").pace
+             for name in ("Wren", "Finch", "Swift", "Heron", "Robin",
+                          "Kestrel", "Plover", "Egret")}
+    check("boxes do not all move at the same speed", len(set(paces.values())) > 1,
+          ", ".join(f"{n} {v:.2f}" for n, v in paces.items()))
+    check("and a box's speed is the same every take",
+          agent_host.DemoAgent("Wren", "http://x").pace == paces["Wren"])
+    check("the demo agent is not faster than the script",
+          min(paces.values()) >= agent_host.BrowserAgent("Wren", "http://x").pace)
 
 
 def check_geometry():
@@ -847,6 +873,10 @@ def check_director(app, manager):
         check(f"detail control {name!r} can be pointed at",
               spot is not None and len(spot) == 2, spot)
 
+    # The input is disabled while a box is working, on purpose -- so type into a
+    # box that has stopped, or this checks the disabling and not the typing.
+    # Seen to fail about one run in five before this wait was here.
+    wait_until(app, lambda: not app.sessions[manager.boxes[0].name].active, 3.0)
     for char in "hi":
         app.detail.type_char(char)
     check("typing lands in the chat box", app.detail.entry_text() == "hi",
@@ -873,22 +903,41 @@ def check_sites():
     from urllib.request import url2pathname, urlopen
 
     config = load_config()
-    start = config["start_url"]
+    starts = config["start_urls"]
+    start = starts[0]
     path = Path(url2pathname(unquote(urlparse(start).path)))
     check("config.json's start page resolves to a real file",
-          start.startswith("file:") and path.is_file(), start)
-    check("and the config says it is one of ours", config["bundled_start"] is True)
+          len(starts) == 1 and start.startswith("file:") and path.is_file(), start)
 
     check("someone else's URL is left exactly as configured",
           sites.resolve("https://intranet.example/home") == "https://intranet.example/home")
     check("about:blank still means about:blank",
           sites.resolve("about:blank") == "about:blank")
-    check("a box's name goes on the end",
-          sites.for_box("file:///x/start.html", "Wren") == "file:///x/start.html?box=Wren")
-    check("and joins a query that is already there",
-          sites.for_box("http://h/s?a=1", "Finch") == "http://h/s?a=1&box=Finch")
-    check("the start page has somewhere to put the name",
-          'id="name"' in path.read_text(encoding="utf-8"))
+
+    # One page means the whole fleet opens the same thing; a list means one page
+    # per box, taken in turn and wrapped around.
+    several = sites.resolve_all(["about:blank", "https://example.com"])
+    check("a list of start pages stays a list", len(several) == 2, several)
+    check("and boxes take them in turn, wrapping around",
+          [sites.start_page_for(several, i) for i in range(4)]
+          == ["about:blank", "https://example.com", "about:blank", "https://example.com"])
+    check("no start page at all is not a crash",
+          sites.start_page_for([], 3) == "" and sites.resolve_all("") == [])
+
+    # A box launches on its start page rather than about:blank, so this is what
+    # tells a child it has nothing to work with. Without it a task naming no URL
+    # would quietly read the start page instead of stopping to ask -- and the
+    # demo has three beats that depend on a box asking.
+    check("a start page is not a page to work with",
+          sites.nothing_to_work_with(start))
+    check("nor is about:blank, or nothing at all",
+          sites.nothing_to_work_with("about:blank") and sites.nothing_to_work_with(""))
+    check("but a real page is",
+          not sites.nothing_to_work_with("https://text.npr.org"))
+    check("and so is a page on the demo's own server",
+          not sites.nothing_to_work_with("http://127.0.0.1:8137/pinion/tickets"))
+    check("somebody else's start.html is not ours",
+          not sites.is_start_page("https://example.com/start.html"))
 
     # The first anchor on a Pinion page must be a real, visible link. An agent
     # that clicks the first `a[href]` finds the nav here; on Wikipedia, MDN and
@@ -899,6 +948,12 @@ def check_sites():
         first_link = text.index("<a ")
         check(f"{page.name}: the first link is in the nav",
               text.index("<nav") < first_link < text.index("</nav>"))
+
+    # The reading copy is generated. A hand-edited one drifts from the
+    # transcript, which is how the old transcript ended up describing boxes that
+    # had been renamed two changes earlier.
+    import narrate
+    check("narration.txt is what transcript.md says", narrate.main(["--check"]) == 0)
 
     base, stop = sites.serve()
     try:
