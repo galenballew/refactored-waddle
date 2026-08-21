@@ -87,7 +87,6 @@ import clicks
 import session as session_model
 import sites
 import thumbs
-import winfocus
 from agents import Agent
 from boxes import AVIARY, BoxManager, load_config
 from ui.app import App
@@ -101,10 +100,15 @@ from ui.app import App
 SETTLE_S = 0.5         # arrived, not yet pressed
 KEY_MS = 40            # per character in the chat box
 
-# Where the pointer waits: beside the control it is going to press next, never
-# on it. Up and to the left, so it sits over the dashboard's own background
-# rather than over the next control's neighbour.
-PARK_OFFSET = (-74, -56)
+# How far from the control the pointer waits, and it waits *inward*: this many
+# pixels from the target toward the middle of the dashboard.
+#
+# A fixed offset was tried first and put the pointer on whatever was that way.
+# For the jump button, which sits directly under the title bar, "up and to the
+# left" is the minimize button -- so the reel spent nine seconds hovering it with
+# a tooltip open. Toward the middle is the one direction that is safe from every
+# corner of the window.
+PARK_INWARD_PX = 96
 CLAUDE_CAP_S = 120     # give up waiting on the models rather than record a hang
 
 FLEET = 5              # what config.json launches; one more is added on camera
@@ -130,6 +134,24 @@ PINION = {
     # Not a page. One box is sent here so one tile really fails.
     "deploy": "/pinion/deploys/482",
 }
+
+
+def park_point(target, middle, inward=None):
+    """Where the pointer waits for `target`: `inward` pixels toward `middle`.
+
+    A plain function so a check can ask it the question that matters -- does this
+    land somewhere harmless -- without driving a mouse to find out.
+    """
+    if target is None:
+        return None
+    inward = PARK_INWARD_PX if inward is None else inward
+    towards_x, towards_y = middle[0] - target[0], middle[1] - target[1]
+    span = (towards_x ** 2 + towards_y ** 2) ** 0.5
+    if span < 1:
+        return None          # the control is the middle; waiting on it is fine
+    step = min(inward, span)
+    return (int(round(target[0] + towards_x / span * step)),
+            int(round(target[1] + towards_y / span * step)))
 
 
 def pages(base):
@@ -301,14 +323,15 @@ class Director:
         move is not visible; what it did with a 900-pixel one was the problem.
 
         Beside rather than on, because a button sitting in its hover state for
-        forty-five seconds reads as a stuck cursor.
+        forty-five seconds reads as a stuck cursor -- and inward rather than in
+        some fixed direction, because "up and to the left" of a control in the
+        top-right corner is the title bar, and the reel spent nine seconds
+        hovering Minimize with its tooltip open.
         """
-        if target is None:
+        where = park_point(target, self.app.window_centre())
+        if where is None:
             return
-        left, top, width, height = winfocus.virtual_screen()
-        x = min(max(target[0] + PARK_OFFSET[0], left + 2), left + width - 2)
-        y = min(max(target[1] + PARK_OFFSET[1], top + 2), top + height - 2)
-        yield from self.point((x, y))
+        yield from self.point(where)
 
     def click(self, target, label=""):
         """Travel there and press it, for real."""

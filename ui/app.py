@@ -606,6 +606,30 @@ class App:
         """
         return winfocus.foreground_window() == int(self.window.winId())
 
+    def window_centre(self):
+        """The middle of the dashboard's client area, in physical screen pixels.
+
+        `demo.py` parks the pointer between clicks and needs somewhere safe to
+        park it: offsetting a fixed distance from a control lands on whatever
+        happens to be there, and for a control in the top-right corner that is
+        the title bar's minimize button, complete with its tooltip. Toward the
+        middle is safe from every corner, and the middle of the *client* area
+        rather than of the window, so the title bar is never in the direction of
+        travel.
+        """
+        left, top, width, height = self.window_screen_rect()
+        return (left + width // 2, top + height // 2)
+
+    def window_screen_rect(self):
+        """The dashboard's client area in physical screen pixels.
+
+        The *client* area, so it excludes the title bar -- which is the point:
+        anything aiming the pointer at the dashboard has to be able to say "and
+        not at the minimize button".
+        """
+        return self.screen_rect(
+            self.window, (0, 0, self.window.width(), self.window.height()))
+
     def foreground_name(self):
         """Whoever has the foreground, in enough detail to name them."""
         return winfocus.describe(winfocus.foreground_window())

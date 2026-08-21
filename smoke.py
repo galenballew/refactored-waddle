@@ -947,6 +947,34 @@ def check_pointer(app, manager):
         far = len(list(clicks.glide((1600, 900))))
     finally:
         clicks.move, clicks.where = real_move, real_where
+    # Where the pointer waits between clicks. It used to sit a fixed distance up
+    # and to the left, which for the jump button -- directly under the title bar
+    # -- was the minimize button, tooltip and all, for nine seconds of the reel.
+    import demo
+
+    left, top, width, height = app.window_screen_rect()
+    middle = app.window_centre()
+    app.show_overview()
+    app.update()
+    spots = {"jump": app.overview.control_centre("jump"),
+             "add tile": app.overview.tile_centre(-1),
+             "first tile": app.overview.tile_centre(0)}
+    app.enter_detail(manager.boxes[0])
+    app.update()
+    for name in ("back", "input", "send", "take control"):
+        spots[name] = app.detail.control_centre(name)
+    for name, spot in spots.items():
+        where = demo.park_point(spot, middle)
+        inside = (where is not None
+                  and left <= where[0] <= left + width
+                  and top <= where[1] <= top + height)
+        check(f"the pointer waits inside the window for {name!r}", inside,
+              f"{spot} -> {where}")
+    check("and never up in the title bar",
+          all(demo.park_point(spot, middle)[1] >= top for spot in spots.values()))
+    app.show_overview()
+    app.update()
+
     check("a glide is a path, not a jump", short >= 2 and bool(moved))
     check("and a longer move takes longer, like a hand", far > short, f"{short} -> {far}")
     check("a hand crosses 900px in about a second",
