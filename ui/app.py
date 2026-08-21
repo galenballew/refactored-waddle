@@ -629,7 +629,7 @@ class App:
         return winfocus.foreground_window() == hwnd
 
     def centre_of(self, widget):
-        """A widget's middle in physical screen pixels, for SetCursorPos."""
+        """A widget's middle in physical screen pixels, for the demo's pointer."""
         left, top, width, height = self.screen_rect(
             widget, (0, 0, widget.width(), widget.height()))
         return (left + width // 2, top + height // 2)
