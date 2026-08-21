@@ -121,6 +121,11 @@ demo.py       the demo reel: the real dashboard and real boxes, driven for the
               Implements `storyboard.md`; `transcript.md` is read over it
 clicks.py     ctypes/user32: the pointer, the left button and the keyboard.
               Only `demo.py` uses it, and only for things a hand could do
+cursorcheck.py forty seconds of pointer movement with no clicks in it, for
+              answering "does this recorder see the cursor at all". Kept because
+              the answer was no, three fixes went into the wrong thing before
+              that was established, and the test that settles it is ten lines of
+              movement and a stopwatch
 narrate.py    `transcript.md` minus everything that is not spoken, into
               `narration.txt`. Generated, because a reading copy edited by hand
               drifts from the transcript
