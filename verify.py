@@ -419,6 +419,17 @@ def check_add_box(app, manager):
         return False
     pump(app, 1.0)
 
+    # Launching Chromium takes the foreground, and a box parked past the edge of
+    # the virtual screen does it invisibly -- the desktop looks untouched while
+    # the keyboard belongs to a browser at -30000. `demo.py` drives the dashboard
+    # with synthetic clicks, which land on whatever window is in front, so it has
+    # to be able to take the foreground back. This is where that is provable:
+    # there is a real launch here and nowhere else.
+    stolen = not app.holds_foreground()
+    reclaimed = app.take_foreground()
+    if stolen:
+        print(f"    the launch took the foreground; got it back: {reclaimed}")
+
     endpoints = {b.cdp for b in manager.boxes if b is not box}
     checks = {
         "own pids": bool(box.pids) and not (box.pids & existing),
@@ -430,6 +441,7 @@ def check_add_box(app, manager):
         "has a session": box.name in app.sessions,
         "has a live child": box.name in app.agents and app.agents[box.name].alive,
         "grid grew": len(app.overview.tiles) == count + 2,  # +1 box, +1 add tile
+        "dashboard can hold the foreground": app.holds_foreground(),
     }
     ok = all(checks.values())
     print(f"    added {box.name}, pids={sorted(box.pids)} hwnd={box.hwnd}")

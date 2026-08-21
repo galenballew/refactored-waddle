@@ -198,9 +198,12 @@ conversation, every profile.
 ## What could ruin a take
 
 - **A hand on the mouse.** Synthetic clicks land wherever the pointer is, on
-  whatever window is in front. The director checks `App.holds_foreground()`
-  before every one and reports how many it skipped, but nothing beats leaving the
-  machine alone.
+  whatever window is in front. Nothing beats leaving the machine alone.
+- **The dashboard losing the foreground to its own boxes**, which is normal and
+  invisible: Chromium takes the foreground when a window launches, and a box
+  parked off-screen does that with nothing on the desktop changing. The add at
+  0:09 loses it every time. The director takes it back before each click and says
+  so in the log; a take is only spoiled if Windows refuses, which it counts.
 - **The add at 0:09.** A real Chromium launch blocks the UI thread. The click that
   starts it is queued by the OS and delivered when the thread resumes, which is
   what `ADD_DEBOUNCE_S` exists to survive.

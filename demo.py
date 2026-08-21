@@ -45,9 +45,13 @@ Recording notes:
     only in the compositor's visual tree; a PrintWindow-based recorder gets empty
     rectangles where the tiles should be.
   * Do not touch the machine while it runs. Synthetic clicks land wherever the
-    pointer is, on whatever window is in front -- the director checks
-    `App.holds_foreground()` before every one of them, but a hand on the mouse
-    beats any check.
+    pointer is, on whatever window is in front.
+  * The dashboard loses the foreground on its own, and that is normal: every box
+    is a real Chromium window, and Chromium takes the foreground when it launches
+    and when it navigates. Parked off-screen it does that invisibly -- the
+    desktop looks untouched while the keyboard belongs to a browser at -30000.
+    The director takes the foreground back before each click and says so in the
+    log; a take is only spoiled if Windows refuses, which it counts and reports.
   * Beat timings are printed to the console as they happen, and again as a
     summary at the end, for lining up narration.
 
@@ -228,33 +232,54 @@ class Director:
         for _ in clicks.glide(target, GLIDE_HOPS):
             yield GLIDE_MS / 1000.0
 
-    def click(self, target, label=""):
-        """Travel there and press it, for real.
+    def ready_to_click(self, label):
+        """Make sure the dashboard is the window a click would land on.
 
-        Checked first, because a synthetic click is not addressed to anything:
-        it lands on whatever window is under the pointer. If the dashboard is not
-        in front the click is skipped and said out loud rather than fired into
-        somebody else's window.
+        A synthetic click is not addressed to anything: it goes wherever the
+        pointer is, into whatever window is in front. And the dashboard loses the
+        foreground constantly during a take, without anybody doing anything --
+        every box is a real Chromium window, Chromium takes the foreground when
+        it launches and when it navigates, and a box parked past the edge of the
+        virtual screen does that *invisibly*. The desktop looks untouched. The
+        keyboard and the next click belong to a browser at -30000.
+
+        So this asks for the foreground back rather than refusing to click, and
+        only gives up if Windows refuses. Taking it costs nothing on camera: the
+        dashboard is already the only window anyone can see.
         """
+        if self.app.holds_foreground():
+            return True
+        stolen_by = self.app.foreground_name()
+        if self.app.take_foreground():
+            self.note(f"took the foreground back from {stolen_by}")
+            return True
+        self.missed += 1
+        self.note(f"could not take the foreground from {stolen_by}; "
+                  f"did not click {label}")
+        return False
+
+    def click(self, target, label=""):
+        """Travel there and press it, for real."""
         yield from self.point(target)
         yield 0.18
         if target is None:
             self.note(f"no control to click: {label or 'unnamed'}")
             return
-        if not self.app.holds_foreground():
-            self.missed += 1
-            self.note(f"dashboard was not in front; did not click {label}")
+        if not self.ready_to_click(label):
             return
+        yield 0.12
         clicks.press()
         yield 0.25
 
     def double_click(self, target, label=""):
         yield from self.point(target)
         yield 0.18
-        if target is None or not self.app.holds_foreground():
-            self.missed += 1
-            self.note(f"dashboard was not in front; did not open {label}")
+        if target is None:
+            self.note(f"no tile to open: {label or 'unnamed'}")
             return
+        if not self.ready_to_click(label):
+            return
+        yield 0.12
         clicks.double_press()
         yield 0.3
 
@@ -290,6 +315,7 @@ class Director:
         stays empty while the narration says a URL was typed is worse than a
         keystroke nobody saw.
         """
+        self.ready_to_click("the chat box")
         for char in text:
             clicks.send_char(char)
             yield KEY_MS / 1000.0
@@ -427,6 +453,11 @@ def build_script(base, claude=True):
         d.beat("one more, on camera")
         yield from d.click(app.overview.tile_centre(-1), label="add box")
         yield d.until(lambda: len(app.manager.boxes) > FLEET, 25.0, "the box to launch")
+        # A brand new Chromium window is the single most reliable way to lose the
+        # foreground in this film. Take it back now rather than at the next click.
+        if not app.holds_foreground():
+            d.note(f"the new window took the foreground ({app.foreground_name()})")
+            app.take_foreground()
         d.note(f"{len(app.manager.boxes)} boxes: "
                + ", ".join(b.name for b in app.manager.boxes))
         yield 3.5
@@ -444,6 +475,10 @@ def build_script(base, claude=True):
         yield d.settled(working, timeout=75.0)
         d.note("counts: " + ", ".join(f"{n} {s}" for s, n
                                       in app.state_counts().items() if n))
+        if not app.holds_foreground():
+            d.note(f"a box took the foreground while working "
+                   f"({app.foreground_name()})")
+            app.take_foreground()
         yield from d.drift([d.tile("Kestrel"), d.tile("Robin")], 5.0)
 
         # -- 4. one of them wants you --------------------------------------
