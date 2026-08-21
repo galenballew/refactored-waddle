@@ -37,7 +37,9 @@ nothing and therefore costs nothing.
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QTimer
-from PySide6.QtWidgets import QApplication, QStackedLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QGraphicsOpacityEffect, QStackedLayout, QWidget,
+)
 
 import layout
 import thumbs
@@ -134,6 +136,15 @@ class App:
         self.detail = DetailView(self)
         self.stack.addWidget(self.overview.frame)
         self.stack.addWidget(self.detail.frame)
+        # One effect per view, made once and left switched off. Creating it on
+        # demand would mean building it in the same frame the fade starts, and
+        # the first frame of the fade is the one that matters.
+        for view in (self.overview, self.detail):
+            effect = QGraphicsOpacityEffect(view.frame)
+            effect.setOpacity(1.0)
+            effect.setEnabled(False)
+            view.frame.setGraphicsEffect(effect)
+            view.fade = effect
         self.view = None
 
         self.window.show()
@@ -184,14 +195,16 @@ class App:
         self.view = view
         self.stack.setCurrentWidget(view.frame)
         self.qt.processEvents()
-        # Every mirror the new view is about to show has just been hidden, so
-        # without this they all snap back at full strength in one frame. Fading
-        # them in is both gentler and more honest -- a live view genuinely is
-        # arriving, and it arrives at the same speed a new box's tile does.
+        # A view change is the largest thing that happens in this app, and it
+        # used to be the only one that happened instantly: the chrome cut over
+        # in a single frame while the mirrors faded, so the cut was what you
+        # saw. Both halves arrive together now, and over longer than a single
+        # tile takes, because more of the screen is changing.
+        motion.fade_widget_in(view.fade)
         for box in self._shown_by(view):
             mover = self.motion.get(box.name)
             if mover is not None:
-                mover.fade_in()
+                mover.fade_in(motion.VIEW_MS, motion.VIEW_CURVE)
         view.relayout()
         view.show()
 
